@@ -237,7 +237,9 @@ def run_scan():
             Or(*squeeze_conditions)
         ]
 
+
         _, df_in_squeeze = Query().select(*select_cols).where2(And(*filters)).set_markets('india').get_scanner_data()
+
 
         current_squeeze_pairs = []
         df_in_squeeze_processed = pd.DataFrame()
