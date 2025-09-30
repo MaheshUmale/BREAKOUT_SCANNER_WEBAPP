@@ -45,23 +45,19 @@
             <h1 class="text-2xl md:text-3xl font-bold">Squeeze Dashboard</h1>
         </header>
 
-        <!-- Cookie and Scan Control Section -->
-        <div class="bg-gray-800 p-4 rounded-lg mb-6 border border-gray-700">
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
-                <div>
-                    <label for="sessionid" class="block text-sm font-medium text-gray-300">TradingView sessionid</label>
-                    <input type="text" id="sessionid" class="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md shadow-sm text-white focus:ring-blue-500 focus:border-blue-500 sm:text-sm p-2">
+        <!-- Scan Control Section -->
+        <div class="bg-gray-800 p-4 rounded-lg mb-6 border border-gray-700 flex justify-between items-center">
+            <div class="flex items-center space-x-4">
+                <div class="flex items-center">
+                    <input id="auto-scan-toggle" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 bg-gray-700 border-gray-600" checked>
+                    <label for="auto-scan-toggle" class="ml-2 block text-sm text-gray-300">Enable Auto-Scan (every 2 mins)</label>
                 </div>
-                <div>
-                    <label for="sessionid_sign" class="block text-sm font-medium text-gray-300">TradingView sessionid_sign</label>
-                    <input type="text" id="sessionid_sign" class="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md shadow-sm text-white focus:ring-blue-500 focus:border-blue-500 sm:text-sm p-2">
-                </div>
-                <button id="scan-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md flex items-center justify-center transition">
+                <button id="manual-scan-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md flex items-center justify-center transition">
                     <span class="spinner"></span>
-                    <span class="btn-text">Run Scan</span>
+                    <span class="btn-text">Refresh Manually</span>
                 </button>
             </div>
-            <p id="scan-status" class="text-center text-sm text-gray-400 mt-3"></p>
+            <p id="scan-status" class="text-sm text-gray-400"></p>
         </div>
 
         <!-- Main Content Area -->
@@ -90,10 +86,12 @@
         const firedContainer = d3.select("#fired-container");
         const inSqueezeContainer = d3.select("#in-squeeze-container");
         const tooltip = d3.select(".tooltip");
-        const scanBtn = document.getElementById('scan-btn');
+        const manualScanBtn = document.getElementById('manual-scan-btn');
+        const autoScanToggle = document.getElementById('auto-scan-toggle');
         const scanStatus = document.getElementById('scan-status');
 
         let allScanData = {};
+        let autoRefreshInterval;
 
         // --- Color Scales ---
         const rvolDomain = [0, 5];
@@ -255,19 +253,42 @@
             });
         }
 
-        async function runScan() {
-            scanBtn.classList.add('loading');
-            scanBtn.disabled = true;
-            scanStatus.textContent = 'Scanning... This may take a moment.';
+        function updateDashboard(data, source = 'auto-refresh') {
+            allScanData = data;
+            renderFired(allScanData.fired || []);
+            renderInSqueeze(allScanData.in_squeeze || []);
 
-            const sessionid = document.getElementById('sessionid').value;
-            const sessionid_sign = document.getElementById('sessionid_sign').value;
+            const timestamp = new Date().toLocaleTimeString();
+            if (source === 'manual') {
+                 scanStatus.textContent = `Manual refresh complete at ${timestamp}.`;
+            } else {
+                 scanStatus.textContent = `Last updated: ${timestamp}`;
+            }
+        }
+
+        async function fetchLatestData() {
+            try {
+                const response = await fetch('/get_latest_data');
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const data = await response.json();
+                updateDashboard(data, 'auto-refresh');
+            } catch (error) {
+                console.error("Failed to fetch latest data:", error);
+                scanStatus.textContent = `Error fetching data.`;
+            }
+        }
+
+        async function manualScan() {
+            manualScanBtn.classList.add('loading');
+            manualScanBtn.disabled = true;
+            scanStatus.textContent = 'Manual scan in progress...';
 
             try {
                 const response = await fetch('/scan', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ sessionid, sessionid_sign })
                 });
 
                 if (!response.ok) {
@@ -275,25 +296,59 @@
                     throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
                 }
 
-                allScanData = await response.json();
-                renderFired(allScanData.fired);
-                renderInSqueeze(allScanData.in_squeeze);
-                scanStatus.textContent = `Scan complete. Found ${allScanData.in_squeeze.length} stocks in a squeeze and ${allScanData.fired.length} recently fired.`;
+                const data = await response.json();
+                updateDashboard(data, 'manual');
 
             } catch (error) {
-                console.error("Failed to run scan:", error);
+                console.error("Failed to run manual scan:", error);
                 scanStatus.textContent = `Error: ${error.message}`;
-                firedContainer.html("<p class='text-center text-red-500'>Scan failed. Please check the console for details.</p>");
-                inSqueezeContainer.html("<p class='text-center text-red-500'>Scan failed.</p>");
             } finally {
-                scanBtn.classList.remove('loading');
-                scanBtn.disabled = false;
+                manualScanBtn.classList.remove('loading');
+                manualScanBtn.disabled = false;
             }
         }
 
+        async function toggleAutoScan(enabled) {
+            try {
+                await fetch('/toggle_scan', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ enabled })
+                });
+                if (enabled) {
+                    startAutoRefresh();
+                    scanStatus.textContent = "Auto-scan enabled.";
+                } else {
+                    stopAutoRefresh();
+                    scanStatus.textContent = "Auto-scan disabled.";
+                }
+            } catch (error) {
+                console.error("Failed to toggle auto-scan:", error);
+            }
+        }
+
+        function startAutoRefresh() {
+            if (autoRefreshInterval) clearInterval(autoRefreshInterval);
+            fetchLatestData(); // Fetch immediately
+            autoRefreshInterval = setInterval(fetchLatestData, 5000); // Poll every 5 seconds for updates
+        }
+
+        function stopAutoRefresh() {
+            if (autoRefreshInterval) clearInterval(autoRefreshInterval);
+        }
+
         // Initial setup
-        scanBtn.addEventListener('click', runScan);
+        manualScanBtn.addEventListener('click', manualScan);
+        autoScanToggle.addEventListener('change', (event) => {
+            toggleAutoScan(event.target.checked);
+        });
+
         setupControls();
+
+        // Start with auto-refresh enabled
+        if (autoScanToggle.checked) {
+            startAutoRefresh();
+        }
     </script>
 </body>
 </html>

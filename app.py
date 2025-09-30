@@ -2,6 +2,7 @@ import os
 import urllib.parse
 import json
 from time import sleep
+import threading
 from datetime import datetime, timedelta
 import numpy as np
 import sqlite3
@@ -11,6 +12,15 @@ from flask import Flask, render_template, jsonify, request
 
 # --- Flask App Initialization ---
 app = Flask(__name__)
+
+# --- Global state for auto-scanning ---
+auto_scan_enabled = True
+latest_scan_data = {
+    "in_squeeze": [],
+    "formed": [],
+    "fired": []
+}
+data_lock = threading.Lock()
 
 # --- SQLite Timestamp Handling ---
 def adapt_datetime_iso(val):
@@ -198,7 +208,7 @@ def load_recent_fired_events_from_db():
     return df
 
 # --- Main Scanning Logic ---
-def run_scan(cookies=None):
+def run_scan():
     try:
         # 1. Load previous squeeze state
         prev_squeeze_pairs = load_previous_squeeze_list_from_db()
@@ -216,8 +226,6 @@ def run_scan(cookies=None):
 
         # Use cookies if provided
         handler = TradingView()
-        if cookies:
-            handler.set_auth_token(cookies.get('sessionid'), cookies.get('sessionid_sign'))
 
         _, df_in_squeeze = handler.get_scanner_data(query_in_squeeze)
 
@@ -305,16 +313,28 @@ def run_scan(cookies=None):
         # 5. Save current state
         save_current_squeeze_list_to_db(current_squeeze_records)
 
-        # 6. Return all data as JSON
-        return {
+        # 6. Store and return data
+        scan_result = {
             "in_squeeze": generate_heatmap_data(df_in_squeeze_processed),
             "formed": generate_heatmap_data(df_formed_processed),
             "fired": generate_heatmap_data(df_recent_fired)
         }
+        with data_lock:
+            global latest_scan_data
+            latest_scan_data = scan_result
+        return scan_result
 
     except Exception as e:
         print(f"An error occurred during scan: {e}")
         return {"error": str(e)}
+
+def background_scanner():
+    """Function to run scans in the background."""
+    while True:
+        if auto_scan_enabled:
+            print("Auto-scanning...")
+            run_scan()
+        sleep(120)
 
 # --- Flask Routes ---
 @app.route('/')
@@ -335,25 +355,26 @@ def compact_page():
 
 @app.route('/scan', methods=['POST'])
 def scan_endpoint():
-    # Extract cookies from the POST request
-    data = request.get_json()
-    sessionid = data.get('sessionid')
-    sessionid_sign = data.get('sessionid_sign')
-
-    cookies = None
-    if sessionid and sessionid_sign:
-        cookies = {
-            'sessionid': sessionid,
-            'sessionid_sign': sessionid_sign
-        }
-
-    scan_results = run_scan(cookies=cookies)
-
+    scan_results = run_scan()
     if "error" in scan_results:
         return jsonify(scan_results), 500
-
     return jsonify(scan_results)
 
+@app.route('/get_latest_data', methods=['GET'])
+def get_latest_data():
+    with data_lock:
+        return jsonify(latest_scan_data)
+
+@app.route('/toggle_scan', methods=['POST'])
+def toggle_scan():
+    global auto_scan_enabled
+    data = request.get_json()
+    auto_scan_enabled = data.get('enabled', auto_scan_enabled)
+    return jsonify({"status": "success", "auto_scan_enabled": auto_scan_enabled})
+
 if __name__ == '__main__':
-    init_db()  # Initialize the database when the app starts
+    init_db()
+    # Start the background scanner thread
+    scanner_thread = threading.Thread(target=background_scanner, daemon=True)
+    scanner_thread.start()
     app.run(debug=True, port=5001)
