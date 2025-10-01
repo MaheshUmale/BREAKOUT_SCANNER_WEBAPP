@@ -6,8 +6,7 @@ import threading
 from datetime import datetime, timedelta
 import numpy as np
 import sqlite3
-from tradingview_screener.column import col
-from tradingview_screener.query import Query, And, Or
+from tradingview_screener import Query, col, And, Or
 import pandas as pd
 from flask import Flask, render_template, jsonify, request
 
@@ -155,21 +154,7 @@ def init_db():
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
     cursor.execute('''CREATE TABLE IF NOT EXISTS squeeze_history (id INTEGER PRIMARY KEY AUTOINCREMENT, scan_timestamp TIMESTAMP NOT NULL, ticker TEXT NOT NULL, timeframe TEXT NOT NULL, volatility REAL, rvol REAL, SqueezeCount INTEGER, squeeze_strength TEXT, HeatmapScore REAL)''')
-
-    # Create fired_squeeze_events table if it doesn't exist (with all columns for new DBs)
     cursor.execute('''CREATE TABLE IF NOT EXISTS fired_squeeze_events (id INTEGER PRIMARY KEY AUTOINCREMENT, fired_timestamp TIMESTAMP NOT NULL, ticker TEXT NOT NULL, fired_timeframe TEXT NOT NULL, momentum TEXT, previous_volatility REAL, current_volatility REAL, rvol REAL, HeatmapScore REAL, URL TEXT, logo TEXT, SqueezeCount INTEGER, highest_tf TEXT)''')
-
-    # --- Migration for older fired_squeeze_events tables ---
-    cursor.execute('PRAGMA table_info(fired_squeeze_events)')
-    columns = [info[1] for info in cursor.fetchall()]
-
-    if 'SqueezeCount' not in columns:
-        cursor.execute('ALTER TABLE fired_squeeze_events ADD COLUMN SqueezeCount INTEGER')
-
-    if 'highest_tf' not in columns:
-        cursor.execute('ALTER TABLE fired_squeeze_events ADD COLUMN highest_tf TEXT')
-
-    # Create indexes
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_scan_timestamp ON squeeze_history (scan_timestamp)')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_fired_timestamp ON fired_squeeze_events (fired_timestamp)')
     conn.commit()
@@ -237,6 +222,8 @@ def run_scan():
             Or(*squeeze_conditions)
         ]
 
+        query_in_squeeze = Query().select(*select_cols).where2(And(*filters)).set_markets('india')
+
 
         # --- Scanner Filters ---
         # # Define the set of rules to find stocks in a squeeze.
@@ -255,11 +242,11 @@ def run_scan():
         # _, df_in_squeeze = query_in_squeeze.get_scanner_data()
 
         query_in_squeeze = Query().select(*select_cols).where2(And(*filters)).set_markets('india')
+
         _, df_in_squeeze = query_in_squeeze.get_scanner_data()
 
         if df_in_squeeze is not None:
             print(f"Verification: Found {len(df_in_squeeze)} tickers in squeeze.")
- 
 
         current_squeeze_pairs = []
         df_in_squeeze_processed = pd.DataFrame()
@@ -309,10 +296,8 @@ def run_scan():
         if fired_pairs:
             fired_tickers = list(set(ticker for ticker, tf in fired_pairs))
             previous_volatility_map = {(ticker, tf): vol for ticker, tf, vol in prev_squeeze_pairs}
-
             query_fired = Query().select(*select_cols).set_tickers(*fired_tickers)
             _, df_fired = query_fired.get_scanner_data()
- 
 
             if df_fired is not None and not df_fired.empty:
                 newly_fired_events = []
