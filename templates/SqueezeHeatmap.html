@@ -15,24 +15,24 @@
         .section-title .arrow { margin-right: 12px; transition: transform 0.2s; font-size: 1rem; }
         .section-title.collapsed .arrow { transform: rotate(-90deg); }
         .timeframe-box { background-color: #1f2937; border-radius: 8px; padding: 1rem; border: 1px solid #374151; }
-        .grid-container { display: grid; grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); gap: 6px; }
-        .timeframe-group { margin-bottom: 2rem; }
+        .grid-container { display: grid; grid-template-columns: repeat(auto-fill, minmax(70px, 1fr)); gap: 4px; }
+        .timeframe-group { margin-bottom: 1.5rem; }
         .timeframe-title { font-size: 1.25rem; font-weight: 700; margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 1px solid #4b5563; color: #d1d5db; }
         .momentum-title { font-size: 1rem; font-weight: 600; margin-bottom: 0.5rem; padding-bottom: 0.25rem; border-bottom: 1px solid #374151; }
         .bullish-col .momentum-title { color: #10b981; }
         .bearish-col .momentum-title { color: #ef4444; }
         .timeframe-title .arrow { margin-right: 8px; transition: transform 0.2s; }
         .timeframe-title.collapsed .arrow { transform: rotate(-90deg); }
-        .momentum-columns { display: flex; gap: 1.5rem; }
+        .momentum-columns { display: flex; gap: 1rem; }
         .bullish-col, .bearish-col { flex: 1; }
-        .cell { position: relative; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 4px; border-radius: 4px; cursor: pointer; text-align: center; height: 75px; transition: transform 0.2s, background-color 0.2s; border: 1px solid #374151; }
+        .cell { position: relative; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 2px; border-radius: 4px; cursor: pointer; text-align: center; height: 65px; transition: transform 0.2s, background-color 0.2s; border: 1px solid #374151; }
         .cell:hover { transform: scale(1.05); border-color: #9ca3af; }
-        .stock-logo { width: 24px; height: 24px; margin-bottom: 3px; }
-        .stock-ticker { font-weight: 600; font-size: 11px; }
-        .stock-info { font-size: 9px; color: #d1d5db; }
-        .time-ago { font-size: 9px; color: #9ca3af; margin-top: 2px; }
-        .squeeze-badge { position: absolute; top: 2px; right: 2px; background-color: rgba(0, 0, 0, 0.6); color: white; font-size: 9px; font-weight: bold; padding: 1px 4px; border-radius: 4px; }
-        .tooltip { position: absolute; text-align: center; padding: 8px; font: 12px sans-serif; background: #1f2937; border: 1px solid #4b5563; border-radius: 8px; pointer-events: none; opacity: 0; color: white; }
+        .stock-logo { width: 20px; height: 20px; margin-bottom: 2px; }
+        .stock-ticker { font-weight: 600; font-size: 10px; }
+        .stock-info { font-size: 8px; color: #d1d5db; }
+        .time-ago { font-size: 8px; color: #9ca3af; margin-top: 1px; }
+        .squeeze-badge { position: absolute; top: 2px; right: 2px; background-color: rgba(0, 0, 0, 0.6); color: white; font-size: 8px; font-weight: bold; padding: 1px 3px; border-radius: 4px; }
+        .tooltip { position: absolute; text-align: center; padding: 8px; font: 12px sans-serif; background: #1f2937; border: 1px solid #4b5563; border-radius: 8px; pointer-events: none; opacity: 0; color: white; z-index: 10; }
         #scan-btn.loading { cursor: not-allowed; background-color: #374151; }
         #scan-btn.loading .spinner { display: inline-block; }
         .spinner { display: none; width: 1rem; height: 1rem; border: 2px solid rgba(255,255,255,.3); border-radius: 50%; border-top-color: #fff; animation: spin 1s ease-in-out infinite; margin-right: 0.5rem; }
@@ -46,15 +46,24 @@
         </header>
 
         <!-- Scan Control Section -->
-        <div class="bg-gray-800 p-4 rounded-lg mb-6 border border-gray-700 flex justify-between items-center">
+        <div class="bg-gray-800 p-3 rounded-lg mb-6 border border-gray-700 flex justify-between items-center">
             <div class="flex items-center space-x-4">
                 <div class="flex items-center">
                     <input id="auto-scan-toggle" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 bg-gray-700 border-gray-600" checked>
-                    <label for="auto-scan-toggle" class="ml-2 block text-sm text-gray-300">Enable Auto-Scan (every 2 mins)</label>
+                    <label for="auto-scan-toggle" class="ml-2 block text-sm text-gray-300">Auto-Scan</label>
                 </div>
-                <button id="manual-scan-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md flex items-center justify-center transition">
+                <div class="flex items-center">
+                    <label for="rvol-filter" class="text-sm text-gray-300 mr-2">RVOL:</label>
+                    <select id="rvol-filter" class="bg-gray-700 border border-gray-600 text-white text-sm rounded-md focus:ring-blue-500 focus:border-blue-500 block p-1.5">
+                        <option selected value="0">Any</option>
+                        <option value="1">> 1</option>
+                        <option value="1.5">> 1.5</option>
+                        <option value="2">> 2</option>
+                    </select>
+                </div>
+                <button id="manual-scan-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-3 rounded-md flex items-center justify-center transition">
                     <span class="spinner"></span>
-                    <span class="btn-text">Refresh Manually</span>
+                    <span class="btn-text">Refresh</span>
                 </button>
             </div>
             <p id="scan-status" class="text-sm text-gray-400"></p>
@@ -88,9 +97,9 @@
         const tooltip = d3.select(".tooltip");
         const manualScanBtn = document.getElementById('manual-scan-btn');
         const autoScanToggle = document.getElementById('auto-scan-toggle');
+        const rvolFilter = document.getElementById('rvol-filter');
         const scanStatus = document.getElementById('scan-status');
 
-        let allScanData = {};
         let autoRefreshInterval;
 
         // --- Color Scales ---
@@ -254,9 +263,8 @@
         }
 
         function updateDashboard(data, source = 'auto-refresh') {
-            allScanData = data;
-            renderFired(allScanData.fired || []);
-            renderInSqueeze(allScanData.in_squeeze || []);
+            renderFired(data.fired || []);
+            renderInSqueeze(data.in_squeeze || []);
 
             const timestamp = new Date().toLocaleTimeString();
             if (source === 'manual') {
@@ -266,14 +274,15 @@
             }
         }
 
-        async function fetchLatestData() {
+        async function fetchLatestData(source = 'auto-refresh') {
+            const rvol = rvolFilter.value;
             try {
-                const response = await fetch('/get_latest_data');
+                const response = await fetch(`/get_latest_data?rvol=${rvol}`);
                 if (!response.ok) {
                     throw new Error(`HTTP error! status: ${response.status}`);
                 }
                 const data = await response.json();
-                updateDashboard(data, 'auto-refresh');
+                updateDashboard(data, source);
             } catch (error) {
                 console.error("Failed to fetch latest data:", error);
                 scanStatus.textContent = `Error fetching data.`;
@@ -284,11 +293,13 @@
             manualScanBtn.classList.add('loading');
             manualScanBtn.disabled = true;
             scanStatus.textContent = 'Manual scan in progress...';
+            const rvol = rvolFilter.value;
 
             try {
                 const response = await fetch('/scan', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ rvol: parseFloat(rvol) })
                 });
 
                 if (!response.ok) {
@@ -341,6 +352,9 @@
         manualScanBtn.addEventListener('click', manualScan);
         autoScanToggle.addEventListener('change', (event) => {
             toggleAutoScan(event.target.checked);
+        });
+        rvolFilter.addEventListener('change', () => {
+            fetchLatestData('filter-change');
         });
 
         setupControls();
