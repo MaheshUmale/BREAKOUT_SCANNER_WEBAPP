@@ -140,34 +140,10 @@ def process_fired_events(events, tf_order_map, tf_suffix_map):
     for ticker, group in df.groupby('ticker'):
         highest_tf_event = group.loc[group['tf_order'].idxmax()]
         consolidated_event = highest_tf_event.to_dict()
-        consolidated_event['SqueezeCount'] = len(group)
+        consolidated_event['SqueezeCount'] = group['fired_timeframe'].nunique()
         consolidated_event['highest_tf'] = highest_tf_event['fired_timeframe']
         processed_events.append(consolidated_event)
     return pd.DataFrame(processed_events)
-
-def consolidate_fired_events(df, tf_order_map, tf_suffix_map):
-    """
-    Consolidates fired events by ticker, selecting the one with the highest timeframe
-    and adding a count of fired timeframes.
-    """
-    if df.empty:
-        return pd.DataFrame()
-
-    def get_tf_sort_key(display_name):
-        suffix = tf_suffix_map.get(display_name, '')
-        return tf_order_map.get(suffix, -1)
-
-    df['tf_order'] = df['fired_timeframe'].apply(get_tf_sort_key)
-
-    consolidated_events = []
-    for ticker, group in df.groupby('ticker'):
-        highest_tf_event = group.loc[group['tf_order'].idxmax()]
-        consolidated_event = highest_tf_event.to_dict()
-        consolidated_event['SqueezeCount'] = len(group)
-        consolidated_event['highest_tf'] = highest_tf_event['fired_timeframe']
-        consolidated_events.append(consolidated_event)
-
-    return pd.DataFrame(consolidated_events)
 
 def get_fired_breakout_direction(row, fired_tf_name, tf_suffix_map):
     tf_suffix = tf_suffix_map.get(fired_tf_name)
@@ -338,7 +314,12 @@ def run_scan():
         # 4. Consolidate and prepare final data
         cleanup_old_fired_events()
         df_recent_fired = load_recent_fired_events_from_db()
-        df_recent_fired_processed = consolidate_fired_events(df_recent_fired, tf_order_map, tf_suffix_map)
+        if not df_recent_fired.empty:
+            fired_events_list = df_recent_fired.to_dict('records')
+            df_recent_fired_processed = process_fired_events(fired_events_list, tf_order_map, tf_suffix_map)
+        else:
+            df_recent_fired_processed = pd.DataFrame()
+
 
         # 5. Save current state
         save_current_squeeze_list_to_db(current_squeeze_records)

@@ -171,7 +171,7 @@
                 .text(d => d.count)
                 .style("display", d => {
                     if (type === 'in_squeeze') return 'block';
-                    if (type === 'fired' && d.count > 1) return 'block';
+                    if (type === 'fired' && d.count > 0) return 'block';
                     return 'none';
                 });
         }

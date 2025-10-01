@@ -1,8 +1,0 @@
-Traceback (most recent call last):
-  File "/app/app.py", line 27, in <module>
-    cookies = rookiepy.to_cookiejar(rookiepy.brave(['.tradingview.com']))
-                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-RuntimeError: can't find cookies file
-
-Location:
-    rookie-rs/src/common/paths.rs:48:7
