@@ -2,7 +2,9 @@
 Backtesting Script for TTM Squeeze Strategy with RVOL and Risk Management
 
 This script performs a backtest of an advanced trading strategy based on the
-TTM Squeeze indicator for a single stock ('NSE:HINDCOPPER').
+TTM Squeeze indicator for a single stock ('NSE:HINDCOPPER'). It runs the
+backtest on multiple intraday timeframes and generates a performance report
+and a chart with trade overlays for each.
 
 ---
 Strategy Logic:
@@ -27,12 +29,16 @@ Strategy Logic:
       signal day to avoid lookahead bias.
     -   **Risk (R)**: Risk is defined as the distance from the entry price to the
       opposite Bollinger Band on the signal day.
-    -   **Stop-Loss**: Set at 1R from the entry price (e.g., for a long trade,
-      stop-loss = entry_price - R).
-    -   **Take-Profit**: Set at 2R from the entry price (e.g., for a long trade,
-      take-profit = entry_price + 2*R).
+    -   **Stop-Loss**: Set at 1R from the entry price.
+    -   **Take-Profit**: Set at 2R from the entry price.
     -   **Exit**: The trade is exited if the daily high/low touches either the
       stop-loss or take-profit level.
+
+5.  **Visualization**:
+    -   For each timeframe, a candlestick chart is generated showing the price
+      action for the last 15 trades.
+    -   Trade entries, exits, stop-loss, and take-profit levels are overlaid
+      on the chart for visual analysis.
 
 ---
 Assumptions:
@@ -45,6 +51,82 @@ Assumptions:
 
 import pandas as pd
 from tvDatafeed import TvDatafeed, Interval
+import mplfinance as mpf
+import numpy as np
+
+def plot_trades(df, trades, symbol, timeframe):
+    """
+    Generates and saves a candlestick chart with trade overlays for the last 15 trades.
+
+    Args:
+        df (pd.DataFrame): DataFrame with OHLCV data.
+        trades (pd.DataFrame): DataFrame of trades.
+        symbol (str): The symbol that was backtested.
+        timeframe (str): The timeframe of the backtest.
+    """
+    if trades.empty:
+        print(f"No trades to plot for {symbol} on {timeframe}.")
+        return
+
+    # --- Prepare data for plotting ---
+    df_plot = df.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close', 'volume': 'Volume'})
+
+    trades_to_plot = trades.tail(15)
+
+    if not trades_to_plot.empty:
+        first_trade_date = trades_to_plot['entry_date'].min()
+        last_trade_date = trades_to_plot['exit_date'].max()
+        plot_start_date = first_trade_date - pd.Timedelta(days=3)
+        plot_end_date = last_trade_date + pd.Timedelta(days=3)
+        df_plot = df_plot.loc[plot_start_date:plot_end_date]
+
+    if df_plot.empty:
+        print(f"No data in the plotting window for {timeframe}. Skipping plot.")
+        return
+
+    # --- Create markers and lines for plotting ---
+    addplots = []
+
+    long_entries = pd.Series(np.nan, index=df_plot.index)
+    short_entries = pd.Series(np.nan, index=df_plot.index)
+    exits = pd.Series(np.nan, index=df_plot.index)
+
+    for trade in trades_to_plot.itertuples():
+        if trade.entry_date in df_plot.index:
+            if trade.direction == 'long':
+                long_entries.loc[trade.entry_date] = df_plot.loc[trade.entry_date]['Low'] * 0.99
+            else:
+                short_entries.loc[trade.entry_date] = df_plot.loc[trade.entry_date]['High'] * 1.01
+
+        if trade.exit_date in df_plot.index:
+            exits.loc[trade.exit_date] = df_plot.loc[trade.exit_date]['Close']
+
+        sl_series = pd.Series(np.nan, index=df_plot.index)
+        tp_series = pd.Series(np.nan, index=df_plot.index)
+
+        trade_duration_idx = df_plot.loc[trade.entry_date:trade.exit_date].index
+
+        sl_series.loc[trade_duration_idx] = trade.stop_loss
+        tp_series.loc[trade_duration_idx] = trade.take_profit
+
+        addplots.append(mpf.make_addplot(sl_series, color='red', linestyle='--', width=0.8))
+        addplots.append(mpf.make_addplot(tp_series, color='green', linestyle='--', width=0.8))
+
+    addplots.append(mpf.make_addplot(long_entries, type='scatter', marker='^', color='green', markersize=150))
+    addplots.append(mpf.make_addplot(short_entries, type='scatter', marker='v', color='red', markersize=150))
+    addplots.append(mpf.make_addplot(exits, type='scatter', marker='x', color='blue', markersize=100))
+
+    # --- Generate and Save Plot ---
+    filename = f"{symbol}_{timeframe}_trades.png"
+    try:
+        mpf.plot(df_plot, type='candle', style='yahoo',
+                 title=f'Trades for {symbol} ({timeframe})',
+                 addplot=addplots,
+                 figsize=(20, 10),
+                 savefig=filename)
+        print(f"Chart saved to {filename}")
+    except Exception as e:
+        print(f"Could not generate plot for {symbol} on {timeframe}. Error: {e}")
 
 def fetch_data(symbol, exchange, interval, n_bars):
     """
@@ -53,7 +135,7 @@ def fetch_data(symbol, exchange, interval, n_bars):
     Args:
         symbol (str): The ticker symbol.
         exchange (str): The exchange where the symbol is traded.
-        interval (Interval): The timeframe for the data (e.g., Interval.in_daily).
+        interval (Interval): The timeframe for the data.
         n_bars (int): The number of historical bars to fetch.
 
     Returns:
@@ -71,36 +153,22 @@ def fetch_data(symbol, exchange, interval, n_bars):
 def calculate_indicators(df, atr_period=14, bb_period=20, kc_period=20, kc_multiplier=2.0):
     """
     Calculates ATR, Bollinger Bands, Keltner Channels, and RVOL for the given DataFrame.
-
-    Args:
-        df (pd.DataFrame): DataFrame with OHLCV data.
-        atr_period (int): The period for ATR calculation.
-        bb_period (int): The period for Bollinger Bands calculation.
-        kc_period (int): The period for Keltner Channels calculation.
-        kc_multiplier (float): The multiplier for the Keltner Channels ATR bands.
-
-    Returns:
-        pd.DataFrame: The DataFrame with added indicator columns.
     """
-    # ATR Calculation
     df['high_low'] = df['high'] - df['low']
     df['high_prev_close'] = abs(df['high'] - df['close'].shift(1))
     df['low_prev_close'] = abs(df['low'] - df['close'].shift(1))
     df['tr'] = df[['high_low', 'high_prev_close', 'low_prev_close']].max(axis=1)
     df['atr'] = df['tr'].ewm(alpha=1/atr_period, adjust=False).mean()
 
-    # Bollinger Bands Calculation
     df['bb_sma'] = df['close'].rolling(window=bb_period).mean()
     df['bb_std'] = df['close'].rolling(window=bb_period).std()
     df['bb_upper'] = df['bb_sma'] + (df['bb_std'] * 2)
     df['bb_lower'] = df['bb_sma'] - (df['bb_std'] * 2)
 
-    # Keltner Channels Calculation
     df['kc_sma'] = df['close'].rolling(window=kc_period).mean()
     df['kc_upper'] = df['kc_sma'] + (df['atr'] * kc_multiplier)
     df['kc_lower'] = df['kc_sma'] - (df['atr'] * kc_multiplier)
 
-    # Relative Volume (RVOL) Calculation
     df['avg_volume'] = df['volume'].rolling(window=20).mean()
     df['rvol'] = df['volume'] / df['avg_volume']
 
@@ -112,12 +180,6 @@ def run_backtest(df):
     """
     Runs the backtest based on the TTM Squeeze "fired" signal, incorporating RVOL
     and a dynamic 1R/2R stop-loss/take-profit exit strategy.
-
-    Args:
-        df (pd.DataFrame): DataFrame with indicator data.
-
-    Returns:
-        pd.DataFrame: A DataFrame containing the details of all simulated trades.
     """
     trades = []
     in_position = False
@@ -126,7 +188,6 @@ def run_backtest(df):
     df['squeeze_on'] = (df['bb_lower'] > df['kc_lower']) & (df['bb_upper'] < df['kc_upper'])
 
     for i in range(1, len(df)):
-        # --- Exit Logic ---
         if in_position:
             current_low = df['low'].iloc[i]
             current_high = df['high'].iloc[i]
@@ -160,7 +221,6 @@ def run_backtest(df):
                 in_position = False
                 trade_details = {}
 
-        # --- Entry Logic ---
         if not in_position:
             squeeze_fired = df['squeeze_on'].iloc[i-1] and not df['squeeze_on'].iloc[i]
 
@@ -177,7 +237,7 @@ def run_backtest(df):
                         risk = entry_price - df['bb_lower'].iloc[i]
                         stop_loss = entry_price - risk
                         take_profit = entry_price + (2 * risk)
-                    else: # short
+                    else:
                         risk = df['bb_upper'].iloc[i] - entry_price
                         stop_loss = entry_price + risk
                         take_profit = entry_price - (2 * risk)
@@ -200,13 +260,6 @@ def run_backtest(df):
 def calculate_performance_metrics(trades, initial_capital=100000.0):
     """
     Calculates key performance metrics for all trades, and for long and short trades separately.
-
-    Args:
-        trades (pd.DataFrame): DataFrame of trades with 'profit_loss' and 'direction'.
-        initial_capital (float): The starting capital for the backtest.
-
-    Returns:
-        dict: A dictionary containing the calculated performance metrics.
     """
     if trades.empty or trades['profit_loss'].isnull().any():
         return {'Overall': {}, 'Long': {}, 'Short': {}}
@@ -240,11 +293,6 @@ def calculate_performance_metrics(trades, initial_capital=100000.0):
 def generate_report(metrics, symbol, timeframe):
     """
     Prints a formatted performance report with a breakdown for long and short trades.
-
-    Args:
-        metrics (dict): A nested dictionary of performance metrics.
-        symbol (str): The symbol that was backtested.
-        timeframe (str): The timeframe of the backtest.
     """
     print(f"\n--- Backtest Performance Report ---")
     print(f"Symbol: {symbol} | Timeframe: {timeframe}")
@@ -272,17 +320,10 @@ def generate_report(metrics, symbol, timeframe):
 def run_backtest_for_timeframe(symbol, exchange, interval, n_bars):
     """
     Encapsulates the entire backtesting process for a single symbol and timeframe.
-
-    Args:
-        symbol (str): The ticker symbol.
-        exchange (str): The exchange where the symbol is traded.
-        interval (Interval): The timeframe for the data.
-        n_bars (int): The number of historical bars to fetch.
     """
     timeframe_str = interval.name.replace('in_', '')
     data_filename = f"{symbol}_{timeframe_str}_data.csv"
 
-    # --- Load Data ---
     try:
         df = pd.read_csv(data_filename, index_col='datetime', parse_dates=True)
         print(f"\nSuccessfully loaded data for {symbol} ({timeframe_str}) from {data_filename}.")
@@ -294,7 +335,6 @@ def run_backtest_for_timeframe(symbol, exchange, interval, n_bars):
             print(f"Failed to fetch data for {symbol} on {timeframe_str}. Skipping.")
             return
 
-    # --- Main Execution ---
     df = calculate_indicators(df)
     df.dropna(inplace=True)
 
@@ -308,6 +348,9 @@ def run_backtest_for_timeframe(symbol, exchange, interval, n_bars):
 
         performance_metrics = calculate_performance_metrics(trades)
         generate_report(performance_metrics, symbol, timeframe_str)
+
+        # Plot the trades on a candlestick chart for visual analysis.
+        plot_trades(df, trades, symbol, timeframe_str)
     else:
         print(f"\nNo trades were executed for {symbol} on {timeframe_str}.")
 
