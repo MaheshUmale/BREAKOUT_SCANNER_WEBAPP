@@ -145,6 +145,30 @@ def process_fired_events(events, tf_order_map, tf_suffix_map):
         processed_events.append(consolidated_event)
     return pd.DataFrame(processed_events)
 
+def consolidate_fired_events(df, tf_order_map, tf_suffix_map):
+    """
+    Consolidates fired events by ticker, selecting the one with the highest timeframe
+    and adding a count of fired timeframes.
+    """
+    if df.empty:
+        return pd.DataFrame()
+
+    def get_tf_sort_key(display_name):
+        suffix = tf_suffix_map.get(display_name, '')
+        return tf_order_map.get(suffix, -1)
+
+    df['tf_order'] = df['fired_timeframe'].apply(get_tf_sort_key)
+
+    consolidated_events = []
+    for ticker, group in df.groupby('ticker'):
+        highest_tf_event = group.loc[group['tf_order'].idxmax()]
+        consolidated_event = highest_tf_event.to_dict()
+        consolidated_event['SqueezeCount'] = len(group)
+        consolidated_event['highest_tf'] = highest_tf_event['fired_timeframe']
+        consolidated_events.append(consolidated_event)
+
+    return pd.DataFrame(consolidated_events)
+
 def get_fired_breakout_direction(row, fired_tf_name, tf_suffix_map):
     tf_suffix = tf_suffix_map.get(fired_tf_name)
     if not tf_suffix: return 'Neutral'
@@ -314,6 +338,7 @@ def run_scan():
         # 4. Consolidate and prepare final data
         cleanup_old_fired_events()
         df_recent_fired = load_recent_fired_events_from_db()
+        df_recent_fired_processed = consolidate_fired_events(df_recent_fired, tf_order_map, tf_suffix_map)
 
         # 5. Save current state
         save_current_squeeze_list_to_db(current_squeeze_records)
@@ -322,7 +347,7 @@ def run_scan():
         return {
             "in_squeeze": df_in_squeeze_processed,
             "formed": df_formed_processed,
-            "fired": df_recent_fired
+            "fired": df_recent_fired_processed
         }
 
     except Exception as e:
