@@ -258,16 +258,22 @@ def run_scan():
     try:
         # 1. Load previous squeeze state
         prev_squeeze_pairs = load_previous_squeeze_list_from_db()
+        EXCHANGE = ['AMEX', 'CBOE', 'NASDAQ', 'NYSE']
+        MARKET ='america'
+        #EXCHANGE ='NSE'
+        #MARKET ='india'
 
         # 2. Find all stocks currently in a squeeze
         squeeze_conditions = [And(col(f'BB.upper{tf}') < col(f'KltChnl.upper{tf}'), col(f'BB.lower{tf}') > col(f'KltChnl.lower{tf}')) for tf in timeframes]
         filters = [
             col('is_primary') == True, col('typespecs').has('common'), col('type') == 'stock',
-            col('exchange') == 'NSE', col('close').between(20, 10000), col('active_symbol') == True,
+            #col('exchange') == EXCHANGE, 
+            col('exchange').isin(EXCHANGE),
+            col('close').between(20, 10000), col('active_symbol') == True,
             col('average_volume_10d_calc|5') > 50000, col('Value.Traded|5') > 10000000,
             Or(*squeeze_conditions)
         ]
-        query_in_squeeze = Query().select(*select_cols).where2(And(*filters)).set_markets('india')
+        query_in_squeeze = Query().select(*select_cols).where2(And(*filters)).set_markets(MARKET)
 
         _, df_in_squeeze = query_in_squeeze.get_scanner_data(cookies=cookies)
 
