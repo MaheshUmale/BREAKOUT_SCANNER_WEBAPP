@@ -15,10 +15,10 @@ app = Flask(__name__)
 
 # --- Global state for auto-scanning ---
 auto_scan_enabled = True
-latest_scan_data = {
-    "in_squeeze": [],
-    "formed": [],
-    "fired": []
+latest_scan_dfs = {
+    "in_squeeze": pd.DataFrame(),
+    "formed": pd.DataFrame(),
+    "fired": pd.DataFrame()
 }
 data_lock = threading.Lock()
 
@@ -209,6 +209,10 @@ def load_recent_fired_events_from_db():
 
 # --- Main Scanning Logic ---
 def run_scan():
+    """
+    Runs a full squeeze scan, processes the data, saves it to the database,
+    and returns the processed dataframes.
+    """
     try:
         # 1. Load previous squeeze state
         prev_squeeze_pairs = load_previous_squeeze_list_from_db()
@@ -221,32 +225,8 @@ def run_scan():
             col('average_volume_10d_calc|5') > 50000, col('Value.Traded|5') > 10000000,
             Or(*squeeze_conditions)
         ]
-
         query_in_squeeze = Query().select(*select_cols).where2(And(*filters)).set_markets('india')
-
-
-        # --- Scanner Filters ---
-        # # Define the set of rules to find stocks in a squeeze.
-        # filters = [
-        #     col('is_primary') == True,  # Only primary listings
-        #     col('typespecs').has('common'),  # Only common stocks
-        #     col('type') == 'stock',  # Exclude ETFs, etc.
-        #     col('exchange') == 'NSE',  # Only stocks on the National Stock Exchange
-        #     col('close').between(20, 10000),  # Price filter
-        #     col('active_symbol') == True,  # Only actively traded symbols
-        #     col('average_volume_10d_calc|5') > 50000,  # Minimum average volume
-        #     col('Value.Traded|5') > 10000000,  # Minimum traded value
-        #     Or(*squeeze_conditions)  # The core squeeze condition across all timeframes
-        # ]
-        # query_in_squeeze = Query().select(*select_cols).where2(And(*filters)).set_markets('india')
-        # _, df_in_squeeze = query_in_squeeze.get_scanner_data()
-
-        query_in_squeeze = Query().select(*select_cols).where2(And(*filters)).set_markets('india')
-
         _, df_in_squeeze = query_in_squeeze.get_scanner_data()
-
-        if df_in_squeeze is not None:
-            print(f"Verification: Found {len(df_in_squeeze)} tickers in squeeze.")
 
         current_squeeze_pairs = []
         df_in_squeeze_processed = pd.DataFrame()
@@ -292,7 +272,6 @@ def run_scan():
 
         # Newly Fired
         fired_pairs = prev_squeeze_set - current_squeeze_set
-        df_fired_processed = pd.DataFrame()
         if fired_pairs:
             fired_tickers = list(set(ticker for ticker, tf in fired_pairs))
             previous_volatility_map = {(ticker, tf): vol for ticker, tf, vol in prev_squeeze_pairs}
@@ -332,27 +311,30 @@ def run_scan():
         # 5. Save current state
         save_current_squeeze_list_to_db(current_squeeze_records)
 
-        # 6. Store and return data
-        scan_result = {
-            "in_squeeze": generate_heatmap_data(df_in_squeeze_processed),
-            "formed": generate_heatmap_data(df_formed_processed),
-            "fired": generate_heatmap_data(df_recent_fired)
+        # 6. Return processed dataframes
+        return {
+            "in_squeeze": df_in_squeeze_processed,
+            "formed": df_formed_processed,
+            "fired": df_recent_fired
         }
-        with data_lock:
-            global latest_scan_data
-            latest_scan_data = scan_result
-        return scan_result
 
     except Exception as e:
         print(f"An error occurred during scan: {e}")
-        return {"error": str(e)}
+        return {
+            "in_squeeze": pd.DataFrame(),
+            "formed": pd.DataFrame(),
+            "fired": pd.DataFrame()
+        }
 
 def background_scanner():
     """Function to run scans in the background."""
     while True:
         if auto_scan_enabled:
             print("Auto-scanning...")
-            run_scan()
+            scan_result_dfs = run_scan()
+            with data_lock:
+                global latest_scan_dfs
+                latest_scan_dfs = scan_result_dfs
         sleep(120)
 
 # --- Flask Routes ---
@@ -374,15 +356,48 @@ def compact_page():
 
 @app.route('/scan', methods=['POST'])
 def scan_endpoint():
+    """Triggers a new scan and returns the filtered results."""
+    rvol_threshold = request.json.get('rvol', 0) if request.json else 0
     scan_results = run_scan()
-    if "error" in scan_results:
-        return jsonify(scan_results), 500
-    return jsonify(scan_results)
+
+    if rvol_threshold > 0:
+        for key in scan_results:
+            if not scan_results[key].empty:
+                scan_results[key] = scan_results[key][scan_results[key]['rvol'] > rvol_threshold]
+
+    response_data = {
+        "in_squeeze": generate_heatmap_data(scan_results["in_squeeze"]),
+        "formed": generate_heatmap_data(scan_results["formed"]),
+        "fired": generate_heatmap_data(scan_results["fired"])
+    }
+    return jsonify(response_data)
 
 @app.route('/get_latest_data', methods=['GET'])
 def get_latest_data():
+    """Returns the latest cached scan data, with optional RVOL filtering."""
+    rvol_threshold = request.args.get('rvol', default=0, type=float)
+
     with data_lock:
-        return jsonify(latest_scan_data)
+        # Make a copy to work with
+        dfs = {
+            "in_squeeze": latest_scan_dfs["in_squeeze"].copy(),
+            "formed": latest_scan_dfs["formed"].copy(),
+            "fired": latest_scan_dfs["fired"].copy()
+        }
+
+    # Apply RVOL filter
+    if rvol_threshold > 0:
+        for key in dfs:
+            if not dfs[key].empty:
+                dfs[key] = dfs[key][dfs[key]['rvol'] > rvol_threshold]
+
+    # Generate JSON response
+    response_data = {
+        "in_squeeze": generate_heatmap_data(dfs["in_squeeze"]),
+        "formed": generate_heatmap_data(dfs["formed"]),
+        "fired": generate_heatmap_data(dfs["fired"])
+    }
+    return jsonify(response_data)
 
 @app.route('/toggle_scan', methods=['POST'])
 def toggle_scan():
