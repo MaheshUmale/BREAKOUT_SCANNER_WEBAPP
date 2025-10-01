@@ -151,10 +151,7 @@
                 })
                 .on("mouseout", () => tooltip.transition().duration(500).style("opacity", 0));
 
-            if (type === 'in_squeeze' || (type === 'fired' && selection.data().some(d => d.count > 0))) {
-                 enterCells.append("div").attr("class", "squeeze-badge").text(d => d.count);
-            }
-
+            enterCells.append("div").attr("class", "squeeze-badge");
             enterCells.append("img").attr("class", "stock-logo");
             enterCells.append("div").attr("class", "stock-ticker");
             enterCells.append("div").attr("class", "stock-info");
@@ -169,6 +166,14 @@
             updateCells.select(".stock-ticker").text(d => d.name.replace('NSE:', ''));
             updateCells.select(".stock-info").text(d => `RVOL: ${d.rvol.toFixed(2)}`);
             updateCells.select(".time-ago").text(d => formatTimeAgo(d.fired_timestamp));
+
+            updateCells.select(".squeeze-badge")
+                .text(d => d.count)
+                .style("display", d => {
+                    if (type === 'in_squeeze') return 'block';
+                    if (type === 'fired' && d.count > 1) return 'block';
+                    return 'none';
+                });
         }
 
         function renderFired(data) {
