@@ -22,6 +22,11 @@ latest_scan_dfs = {
 }
 data_lock = threading.Lock()
 
+
+import rookiepy
+cookies = rookiepy.to_cookiejar(rookiepy.brave(['.tradingview.com'])) 
+print(cookies)
+
 # --- SQLite Timestamp Handling ---
 def adapt_datetime_iso(val):
     """Adapt datetime.datetime to timezone-naive ISO 8601 format."""
@@ -226,7 +231,7 @@ def run_scan():
             Or(*squeeze_conditions)
         ]
         query_in_squeeze = Query().select(*select_cols).where2(And(*filters)).set_markets('india')
-        _, df_in_squeeze = query_in_squeeze.get_scanner_data()
+        _, df_in_squeeze = query_in_squeeze.get_scanner_data(cookies=cookies)
 
         current_squeeze_pairs = []
         df_in_squeeze_processed = pd.DataFrame()
@@ -276,7 +281,7 @@ def run_scan():
             fired_tickers = list(set(ticker for ticker, tf in fired_pairs))
             previous_volatility_map = {(ticker, tf): vol for ticker, tf, vol in prev_squeeze_pairs}
             query_fired = Query().select(*select_cols).set_tickers(*fired_tickers)
-            _, df_fired = query_fired.get_scanner_data()
+            _, df_fired = query_fired.get_scanner_data(cookies=cookies)
 
             if df_fired is not None and not df_fired.empty:
                 newly_fired_events = []
@@ -411,4 +416,4 @@ if __name__ == '__main__':
     # Start the background scanner thread
     scanner_thread = threading.Thread(target=background_scanner, daemon=True)
     scanner_thread.start()
-    app.run(debug=False, port=5001)
+    app.run(debug=True, port=5001)
