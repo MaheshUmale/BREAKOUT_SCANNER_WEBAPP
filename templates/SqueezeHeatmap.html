@@ -169,11 +169,7 @@
 
             updateCells.select(".squeeze-badge")
                 .text(d => d.count)
-                .style("display", d => {
-                    if (type === 'in_squeeze') return 'block';
-                    if (type === 'fired' && d.count > 0) return 'block';
-                    return 'none';
-                });
+                .style("display", d => d.count > 1 ? 'block' : 'none');
         }
 
         function renderFired(data) {
