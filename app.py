@@ -164,6 +164,14 @@ def init_db():
     cursor = conn.cursor()
     cursor.execute('''CREATE TABLE IF NOT EXISTS squeeze_history (id INTEGER PRIMARY KEY AUTOINCREMENT, scan_timestamp TIMESTAMP NOT NULL, ticker TEXT NOT NULL, timeframe TEXT NOT NULL, volatility REAL, rvol REAL, SqueezeCount INTEGER, squeeze_strength TEXT, HeatmapScore REAL)''')
     cursor.execute('''CREATE TABLE IF NOT EXISTS fired_squeeze_events (id INTEGER PRIMARY KEY AUTOINCREMENT, fired_timestamp TIMESTAMP NOT NULL, ticker TEXT NOT NULL, fired_timeframe TEXT NOT NULL, momentum TEXT, previous_volatility REAL, current_volatility REAL, rvol REAL, HeatmapScore REAL, URL TEXT, logo TEXT, SqueezeCount INTEGER, highest_tf TEXT)''')
+
+    # --- Schema migration: Add 'confluence' column if it doesn't exist ---
+    cursor.execute("PRAGMA table_info(fired_squeeze_events)")
+    columns = [info[1] for info in cursor.fetchall()]
+    if 'confluence' not in columns:
+        print("Adding 'confluence' column to 'fired_squeeze_events' table.")
+        cursor.execute("ALTER TABLE fired_squeeze_events ADD COLUMN confluence BOOLEAN DEFAULT 0")
+
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_scan_timestamp ON squeeze_history (scan_timestamp)')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_fired_timestamp ON fired_squeeze_events (fired_timestamp)')
     conn.commit()
@@ -194,9 +202,27 @@ def save_fired_events_to_db(fired_events_df):
     if fired_events_df.empty: return
     conn = sqlite3.connect(DB_FILE, detect_types=sqlite3.PARSE_DECLTYPES)
     now = datetime.now()
-    data_to_insert = [(now, row['ticker'], row['fired_timeframe'], row.get('momentum'), row.get('previous_volatility'), row.get('current_volatility'), row.get('rvol'), row.get('HeatmapScore'), row.get('URL'), row.get('logo'), row.get('SqueezeCount'), row.get('highest_tf')) for _, row in fired_events_df.iterrows()]
+    # Ensure 'confluence' column exists in the DataFrame, default to False if not
+    if 'confluence' not in fired_events_df.columns:
+        fired_events_df['confluence'] = False
+
+    data_to_insert = [
+        (now, row['ticker'], row['fired_timeframe'], row.get('momentum'),
+         row.get('previous_volatility'), row.get('current_volatility'),
+         row.get('rvol'), row.get('HeatmapScore'), row.get('URL'),
+         row.get('logo'), row.get('SqueezeCount'), row.get('highest_tf'),
+         bool(row.get('confluence', False)))  # Ensure boolean conversion
+        for _, row in fired_events_df.iterrows()
+    ]
     cursor = conn.cursor()
-    cursor.executemany('INSERT INTO fired_squeeze_events (fired_timestamp, ticker, fired_timeframe, momentum, previous_volatility, current_volatility, rvol, HeatmapScore, URL, logo, SqueezeCount, highest_tf) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', data_to_insert)
+    sql = '''
+        INSERT INTO fired_squeeze_events (
+            fired_timestamp, ticker, fired_timeframe, momentum,
+            previous_volatility, current_volatility, rvol, HeatmapScore,
+            URL, logo, SqueezeCount, highest_tf, confluence
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    '''
+    cursor.executemany(sql, data_to_insert)
     conn.commit()
     conn.close()
 
@@ -281,6 +307,14 @@ def run_scan():
         prev_squeeze_set = {(ticker, tf) for ticker, tf, vol in prev_squeeze_pairs}
         current_squeeze_set = {(r['ticker'], r['timeframe']) for r in current_squeeze_records}
 
+        # --- Refactored for efficient confluence lookup ---
+        prev_squeeze_state = {}
+        for ticker, tf, _ in prev_squeeze_pairs:
+            if ticker not in prev_squeeze_state:
+                prev_squeeze_state[ticker] = set()
+            prev_squeeze_state[ticker].add(tf)
+
+
         # Newly Formed
         formed_pairs = current_squeeze_set - prev_squeeze_set
         df_formed_processed = pd.DataFrame()
@@ -308,8 +342,25 @@ def run_scan():
                             atr, sma20, bb_upper = row_data.get(f'ATR{tf_suffix}'), row_data.get(f'SMA20{tf_suffix}'), row_data.get(f'BB.upper{tf_suffix}')
                             current_volatility = (bb_upper - sma20) / atr if pd.notna(atr) and atr != 0 and pd.notna(sma20) and pd.notna(bb_upper) else 0
                             if current_volatility > previous_volatility:
+                                # --- Confluence Check (Efficient)---
+                                has_confluence = False
+                                fired_tf_rank = tf_order_map.get(tf_suffix_map.get(fired_tf_name, ''), -1)
+                                if ticker in prev_squeeze_state:
+                                    for prev_tf in prev_squeeze_state[ticker]:
+                                        prev_tf_rank = tf_order_map.get(tf_suffix_map.get(prev_tf, ''), -1)
+                                        if prev_tf_rank > fired_tf_rank:
+                                            has_confluence = True
+                                            break  # Found confluence
+
                                 fired_event = row_data.to_dict()
-                                fired_event.update({'fired_timeframe': fired_tf_name, 'previous_volatility': previous_volatility, 'current_volatility': current_volatility, 'volatility_increased': True, 'fired_timestamp': datetime.now()})
+                                fired_event.update({
+                                    'fired_timeframe': fired_tf_name,
+                                    'previous_volatility': previous_volatility,
+                                    'current_volatility': current_volatility,
+                                    'volatility_increased': True,
+                                    'fired_timestamp': datetime.now(),
+                                    'confluence': has_confluence
+                                })
                                 newly_fired_events.append(fired_event)
                 if newly_fired_events:
                     df_newly_fired = process_fired_events(newly_fired_events, tf_order_map, tf_suffix_map)
@@ -317,7 +368,8 @@ def run_scan():
                     df_newly_fired['logo'] = df_newly_fired['logoid'].apply(lambda x: f"https://s3-symbol-logo.tradingview.com/{x}.svg" if pd.notna(x) and x.strip() else '')
                     df_newly_fired['rvol'] = df_newly_fired.apply(lambda row: get_dynamic_rvol(row, row['highest_tf'], tf_suffix_map), axis=1)
                     df_newly_fired['momentum'] = df_newly_fired.apply(lambda row: get_fired_breakout_direction(row, row['highest_tf'], tf_suffix_map), axis=1)
-                    df_newly_fired['squeeze_strength'] = 'FIRED'
+                    # Set squeeze_strength based on confluence
+                    df_newly_fired['squeeze_strength'] = np.where(df_newly_fired['confluence'], 'FIRED (Confluence)', 'FIRED')
                     df_newly_fired['HeatmapScore'] = df_newly_fired['rvol'] * df_newly_fired['momentum'].map({'Bullish': 1, 'Neutral': 0.5, 'Bearish': -1}) * df_newly_fired['current_volatility']
                     save_fired_events_to_db(df_newly_fired)
                     append_df_to_csv(df_newly_fired, 'BBSCAN_FIRED_' + datetime.now().strftime('%d_%m_%y') + '.csv')
