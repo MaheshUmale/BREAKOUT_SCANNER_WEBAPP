@@ -61,7 +61,7 @@ def fetch_data(symbol, exchange, interval, n_bars):
     """
     try:
         tv = TvDatafeed()
-        print("Fetching data from tvdatafeed...")
+        print(f"Fetching {n_bars} bars of {interval.name} data for {symbol}...")
         data = tv.get_hist(symbol=symbol, exchange=exchange, interval=interval, n_bars=n_bars)
         return data
     except Exception as e:
@@ -237,15 +237,17 @@ def calculate_performance_metrics(trades, initial_capital=100000.0):
 
     return results
 
-def generate_report(metrics):
+def generate_report(metrics, symbol, timeframe):
     """
     Prints a formatted performance report with a breakdown for long and short trades.
 
     Args:
         metrics (dict): A nested dictionary of performance metrics.
+        symbol (str): The symbol that was backtested.
+        timeframe (str): The timeframe of the backtest.
     """
-    print("\n--- Backtest Performance Report ---")
-    print(f"Symbol: {SYMBOL}")
+    print(f"\n--- Backtest Performance Report ---")
+    print(f"Symbol: {symbol} | Timeframe: {timeframe}")
     print("-----------------------------------")
 
     def _print_subset(name, data):
@@ -267,24 +269,30 @@ def generate_report(metrics):
 
     print("-----------------------------------")
 
+def run_backtest_for_timeframe(symbol, exchange, interval, n_bars):
+    """
+    Encapsulates the entire backtesting process for a single symbol and timeframe.
 
-if __name__ == "__main__":
-    # --- Parameters ---
-    SYMBOL = "HINDCOPPER"
-    EXCHANGE = "NSE"
-    INTERVAL = Interval.in_daily
-    N_BARS = 5000
+    Args:
+        symbol (str): The ticker symbol.
+        exchange (str): The exchange where the symbol is traded.
+        interval (Interval): The timeframe for the data.
+        n_bars (int): The number of historical bars to fetch.
+    """
+    timeframe_str = interval.name.replace('in_', '')
+    data_filename = f"{symbol}_{timeframe_str}_data.csv"
 
     # --- Load Data ---
     try:
-        df = pd.read_csv(f"{SYMBOL}_data.csv", index_col='datetime', parse_dates=True)
-        print(f"Successfully loaded data for {SYMBOL} from CSV.")
+        df = pd.read_csv(data_filename, index_col='datetime', parse_dates=True)
+        print(f"\nSuccessfully loaded data for {symbol} ({timeframe_str}) from {data_filename}.")
     except FileNotFoundError:
-        df = fetch_data(SYMBOL, EXCHANGE, INTERVAL, N_BARS)
+        df = fetch_data(symbol, exchange, interval, n_bars)
         if df is not None:
-            df.to_csv(f"{SYMBOL}_data.csv")
+            df.to_csv(data_filename)
         else:
-            exit()
+            print(f"Failed to fetch data for {symbol} on {timeframe_str}. Skipping.")
+            return
 
     # --- Main Execution ---
     df = calculate_indicators(df)
@@ -293,12 +301,32 @@ if __name__ == "__main__":
     trades = run_backtest(df)
 
     if not trades.empty:
-        print("\nBacktest Trades:")
+        print(f"\nBacktest Trades for {timeframe_str}:")
         pd.set_option('display.width', 1000)
         pd.set_option('display.max_columns', 10)
         print(trades.to_string())
 
         performance_metrics = calculate_performance_metrics(trades)
-        generate_report(performance_metrics)
+        generate_report(performance_metrics, symbol, timeframe_str)
     else:
-        print("\nNo trades were executed in this backtest.")
+        print(f"\nNo trades were executed for {symbol} on {timeframe_str}.")
+
+
+if __name__ == "__main__":
+    # --- Parameters ---
+    SYMBOL = "HINDCOPPER"
+    EXCHANGE = "NSE"
+
+    # --- Multi-Timeframe Backtesting ---
+    # Define the list of timeframes to test.
+    # We fetch 5000 bars, the maximum allowed by tvdatafeed, to get as much
+    # historical data as possible for each intraday timeframe (approximates the last year).
+    timeframes_to_test = [
+        (Interval.in_5_minute, 5000),
+        (Interval.in_15_minute, 5000),
+        (Interval.in_30_minute, 5000),
+    ]
+
+    # Loop through each timeframe and run the full backtest process.
+    for interval, n_bars in timeframes_to_test:
+        run_backtest_for_timeframe(SYMBOL, EXCHANGE, interval, n_bars)
