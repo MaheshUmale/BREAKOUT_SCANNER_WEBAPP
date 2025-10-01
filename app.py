@@ -224,10 +224,10 @@ def run_scan():
 
         query_in_squeeze = Query().select(*select_cols).where2(And(*filters)).set_markets('india')
 
-        # Use cookies if provided
-        handler = TradingView()
+        _, df_in_squeeze = query_in_squeeze.get_scanner_data()
 
-        _, df_in_squeeze = handler.get_scanner_data(query_in_squeeze)
+        if df_in_squeeze is not None:
+            print(f"Verification: Found {len(df_in_squeeze)} tickers in squeeze.")
 
         current_squeeze_pairs = []
         df_in_squeeze_processed = pd.DataFrame()
@@ -278,7 +278,7 @@ def run_scan():
             fired_tickers = list(set(ticker for ticker, tf in fired_pairs))
             previous_volatility_map = {(ticker, tf): vol for ticker, tf, vol in prev_squeeze_pairs}
             query_fired = Query().select(*select_cols).set_tickers(*fired_tickers)
-            _, df_fired = handler.get_scanner_data(query_fired)
+            _, df_fired = query_fired.get_scanner_data()
 
             if df_fired is not None and not df_fired.empty:
                 newly_fired_events = []
@@ -377,4 +377,4 @@ if __name__ == '__main__':
     # Start the background scanner thread
     scanner_thread = threading.Thread(target=background_scanner, daemon=True)
     scanner_thread.start()
-    app.run(debug=True, port=5001)
+    app.run(debug=False, port=5001)
