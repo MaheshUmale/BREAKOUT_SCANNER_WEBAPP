@@ -24,8 +24,12 @@ data_lock = threading.Lock()
 
 
 import rookiepy
-cookies = rookiepy.to_cookiejar(rookiepy.brave(['.tradingview.com'])) 
-print(cookies)
+cookies = None
+try:
+    cookies = rookiepy.to_cookiejar(rookiepy.brave(['.tradingview.com']))
+    print("Successfully loaded TradingView cookies.")
+except Exception as e:
+    print(f"Warning: Could not load TradingView cookies. Scanning will be disabled. Error: {e}")
 
 # --- SQLite Timestamp Handling ---
 def adapt_datetime_iso(val):
@@ -218,6 +222,13 @@ def run_scan():
     Runs a full squeeze scan, processes the data, saves it to the database,
     and returns the processed dataframes.
     """
+    if cookies is None:
+        print("Skipping scan because cookies are not loaded.")
+        return {
+            "in_squeeze": pd.DataFrame(),
+            "formed": pd.DataFrame(),
+            "fired": pd.DataFrame()
+        }
     try:
         # 1. Load previous squeeze state
         prev_squeeze_pairs = load_previous_squeeze_list_from_db()
