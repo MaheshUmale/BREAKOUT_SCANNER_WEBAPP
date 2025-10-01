@@ -238,7 +238,23 @@ def run_scan():
         ]
 
 
- 
+        # --- Scanner Filters ---
+        # # Define the set of rules to find stocks in a squeeze.
+        # filters = [
+        #     col('is_primary') == True,  # Only primary listings
+        #     col('typespecs').has('common'),  # Only common stocks
+        #     col('type') == 'stock',  # Exclude ETFs, etc.
+        #     col('exchange') == 'NSE',  # Only stocks on the National Stock Exchange
+        #     col('close').between(20, 10000),  # Price filter
+        #     col('active_symbol') == True,  # Only actively traded symbols
+        #     col('average_volume_10d_calc|5') > 50000,  # Minimum average volume
+        #     col('Value.Traded|5') > 10000000,  # Minimum traded value
+        #     Or(*squeeze_conditions)  # The core squeeze condition across all timeframes
+        # ]
+        # query_in_squeeze = Query().select(*select_cols).where2(And(*filters)).set_markets('india')
+        # _, df_in_squeeze = query_in_squeeze.get_scanner_data()
+
+        query_in_squeeze = Query().select(*select_cols).where2(And(*filters)).set_markets('india')
         _, df_in_squeeze = query_in_squeeze.get_scanner_data()
 
         if df_in_squeeze is not None:
