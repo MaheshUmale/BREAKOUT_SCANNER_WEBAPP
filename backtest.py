@@ -50,9 +50,9 @@ Assumptions:
 """
 
 import pandas as pd
-from tvDatafeed import TvDatafeed, Interval
 import mplfinance as mpf
 import numpy as np
+import os
 
 def plot_trades(df, trades, symbol, timeframe):
     """
@@ -117,7 +117,11 @@ def plot_trades(df, trades, symbol, timeframe):
     addplots.append(mpf.make_addplot(exits, type='scatter', marker='x', color='blue', markersize=100))
 
     # --- Generate and Save Plot ---
-    filename = f"{symbol}_{timeframe}_trades.png"
+    charts_dir = "charts"
+    if not os.path.exists(charts_dir):
+        os.makedirs(charts_dir)
+    filename = os.path.join(charts_dir, f"{symbol}_{timeframe}_trades.png")
+
     try:
         mpf.plot(df_plot, type='candle', style='yahoo',
                  title=f'Trades for {symbol} ({timeframe})',
@@ -128,27 +132,37 @@ def plot_trades(df, trades, symbol, timeframe):
     except Exception as e:
         print(f"Could not generate plot for {symbol} on {timeframe}. Error: {e}")
 
-def fetch_data(symbol, exchange, interval, n_bars):
+def load_and_resample_data(directory , symbol, timeframe_minutes):
     """
-    Fetches historical OHLCV data for a given symbol using tvdatafeed.
+    Loads 1-minute data for a symbol and resamples it to the specified timeframe.
 
     Args:
-        symbol (str): The ticker symbol.
-        exchange (str): The exchange where the symbol is traded.
-        interval (Interval): The timeframe for the data.
-        n_bars (int): The number of historical bars to fetch.
+        symbol (str): The stock symbol (e.g., 'TCS').
+        timeframe_minutes (int): The target timeframe in minutes (e.g., 5, 15).
 
     Returns:
-        pd.DataFrame: A DataFrame containing the OHLCV data, or None if fetching fails.
+        pd.DataFrame: Resampled OHLCV data, or None if file is not found.
     """
-    try:
-        tv = TvDatafeed()
-        print(f"Fetching {n_bars} bars of {interval.name} data for {symbol}...")
-        data = tv.get_hist(symbol=symbol, exchange=exchange, interval=interval, n_bars=n_bars)
-        return data
-    except Exception as e:
-        print(f"Error fetching data for {symbol}: {e}")
+    filename = f"{symbol}_minute.csv"
+    filename  = os.path.join(directory, filename)
+    if not os.path.exists(filename):
+        print(f"Data file not found: {filename}")
         return None
+
+    print(f"Loading data from {filename} and resampling to {timeframe_minutes} minutes...")
+    df = pd.read_csv(filename, index_col='date', parse_dates=True)
+
+    resample_period = f'{timeframe_minutes}min'
+
+    resampled_df = df.resample(resample_period).agg({
+        'open': 'first',
+        'high': 'max',
+        'low': 'min',
+        'close': 'last',
+        'volume': 'sum'
+    }).dropna()
+
+    return resampled_df
 
 def calculate_indicators(df, atr_period=14, bb_period=20, kc_period=20, kc_multiplier=2.0):
     """
@@ -290,86 +304,144 @@ def calculate_performance_metrics(trades, initial_capital=100000.0):
 
     return results
 
-def generate_report(metrics, symbol, timeframe):
-    """
-    Prints a formatted performance report with a breakdown for long and short trades.
-    """
-    print(f"\n--- Backtest Performance Report ---")
-    print(f"Symbol: {symbol} | Timeframe: {timeframe}")
-    print("-----------------------------------")
-
-    def _print_subset(name, data):
-        print(f"\n{name} Performance:")
-        if data and data['Total Trades'] > 0:
-            print(f"  Total Trades: {data['Total Trades']}")
-            print(f"  Win Rate: {data['Win Rate (%)']:.2f}%")
-            print(f"  Total Profit/Loss: ${data['Total Profit/Loss ($)']:.2f}")
-            if 'Average Profit per Trade' in data:
-                print(f"  Average Profit per Trade: ${data['Average Profit per Trade']:.2f}")
-            if 'Maximum Drawdown (%)' in data:
-                print(f"  Maximum Drawdown: {data['Maximum Drawdown (%)']:.2f}%")
-        else:
-            print("  No trades to analyze.")
-
-    _print_subset("Overall", metrics.get('Overall', {}))
-    _print_subset("Long", metrics.get('Long', {}))
-    _print_subset("Short", metrics.get('Short', {}))
-
-    print("-----------------------------------")
-
-def run_backtest_for_timeframe(symbol, exchange, interval, n_bars):
+def run_backtest_for_timeframe(directory , symbol, timeframe_minutes):
     """
     Encapsulates the entire backtesting process for a single symbol and timeframe.
     """
-    timeframe_str = interval.name.replace('in_', '')
-    data_filename = f"{symbol}_{timeframe_str}_data.csv"
-
-    try:
-        df = pd.read_csv(data_filename, index_col='datetime', parse_dates=True)
-        print(f"\nSuccessfully loaded data for {symbol} ({timeframe_str}) from {data_filename}.")
-    except FileNotFoundError:
-        df = fetch_data(symbol, exchange, interval, n_bars)
-        if df is not None:
-            df.to_csv(data_filename)
-        else:
-            print(f"Failed to fetch data for {symbol} on {timeframe_str}. Skipping.")
-            return
+    df = load_and_resample_data(directory, symbol, timeframe_minutes)
+    if df is None:
+        return None, None
 
     df = calculate_indicators(df)
     df.dropna(inplace=True)
 
     trades = run_backtest(df)
+    timeframe_str = f"{timeframe_minutes}min"
 
     if not trades.empty:
-        print(f"\nBacktest Trades for {timeframe_str}:")
-        pd.set_option('display.width', 1000)
-        pd.set_option('display.max_columns', 10)
-        print(trades.to_string())
-
         performance_metrics = calculate_performance_metrics(trades)
-        generate_report(performance_metrics, symbol, timeframe_str)
-
-        # Plot the trades on a candlestick chart for visual analysis.
         plot_trades(df, trades, symbol, timeframe_str)
+        return performance_metrics, trades
     else:
         print(f"\nNo trades were executed for {symbol} on {timeframe_str}.")
+        return None, None
 
+def generate_consolidated_report(all_metrics, symbol):
+    """
+    Generates a consolidated report from all backtest runs and saves it to a file.
+    """
+    reports_dir = "reports"
+    if not os.path.exists(reports_dir):
+        os.makedirs(reports_dir)
+
+    filename = os.path.join(reports_dir, f"{symbol}_consolidated_report.txt")
+
+    with open(filename, 'w') as f:
+        f.write(f"--- Consolidated Backtest Performance Report for {symbol} ---\n")
+        f.write("=" * 60 + "\n")
+
+        for timeframe, metrics in all_metrics.items():
+            f.write(f"\n--- Timeframe: {timeframe} ---\n")
+            if not metrics:
+                f.write("No trades to analyze.\n")
+                continue
+
+            def _write_subset(name, data):
+                f.write(f"\n{name} Performance:\n")
+                if data and data['Total Trades'] > 0:
+                    f.write(f"  Total Trades: {data['Total Trades']}\n")
+                    f.write(f"  Win Rate: {data['Win Rate (%)']:.2f}%\n")
+                    f.write(f"  Total Profit/Loss: ${data['Total Profit/Loss ($)']:.2f}\n")
+                    if 'Average Profit per Trade' in data:
+                        f.write(f"  Average Profit per Trade: ${data['Average Profit per Trade']:.2f}\n")
+                    if 'Maximum Drawdown (%)' in data:
+                        f.write(f"  Maximum Drawdown: {data['Maximum Drawdown (%)']:.2f}%\n")
+                else:
+                    f.write("  No trades to analyze for this subset.\n")
+
+            _write_subset("Overall", metrics.get('Overall', {}))
+            _write_subset("Long", metrics.get('Long', {}))
+            _write_subset("Short", metrics.get('Short', {}))
+            f.write("-" * 40 + "\n")
+
+        f.write("\n" + "=" * 60 + "\n")
+        f.write("--- End of Report ---\n")
+
+    print(f"Consolidated report saved to {filename}")
+
+import re
+import os
+
+def get_csv_filenames(directory_path):
+    """
+    Returns a list of all CSV filenames in the specified directory.
+
+    Args:
+        directory_path (str): The path to the directory to scan.
+
+    Returns:
+        list: A list of strings, where each string is the name of a CSV file.
+    """
+    csv_files = []
+    for filename in os.listdir(directory_path):
+        if filename.endswith(".csv"):
+            csv_files.append(filename)
+    return csv_files
+
+def loadSYMBOLSFromDir(directory):
+    
+    # Example usage:
+    # directory = "/path/to/your/directory"  # Replace with the actual path
+    csv_filenames = get_csv_filenames(directory)
+    print(csv_filenames)
+    
+
+    # The regex pattern to capture the symbol
+    pattern = r"(.*)_minute.csv"
+
+    # A list to store the extracted symbols
+    symbols = []
+
+    # Loop through each filename in the list
+    for filename in csv_filenames:
+        match = re.search(pattern, filename)
+        if match:
+            # If a match is found, extract the captured group (the symbol)
+            symbol = match.group(1)
+            symbols.append(symbol)
+        else:
+            # Optional: Print a message for files that don't match the pattern
+            print(f"Skipped: '{filename}' (Pattern not found)")
+
+    print("\nExtracted symbols:")
+    print(symbols)
+    return symbols
+    
 
 if __name__ == "__main__":
     # --- Parameters ---
-    SYMBOL = "HINDCOPPER"
-    EXCHANGE = "NSE"
+    SYMBOL = "TCS"  # The symbol for which to run the backtest.
+                    # Requires a corresponding 'TCS_minute.csv' file.
 
-    # --- Multi-Timeframe Backtesting ---
-    # Define the list of timeframes to test.
-    # We fetch 5000 bars, the maximum allowed by tvdatafeed, to get as much
-    # historical data as possible for each intraday timeframe (approximates the last year).
-    timeframes_to_test = [
-        (Interval.in_5_minute, 5000),
-        (Interval.in_15_minute, 5000),
-        (Interval.in_30_minute, 5000),
-    ]
+    directory = "D:\\py_code_workspace\\NSE _STOCK _DATA"
+    SYMBOLSLIST  = loadSYMBOLSFromDir(directory)
+    # Define the list of timeframes (in minutes) to test.
+    timeframes_to_test = [5, 15, 30]
+    for SYMBOL in SYMBOLSLIST:
+        all_metrics = {}
+        print(f"--- Starting Consolidated Backtest for {SYMBOL} ---")
 
-    # Loop through each timeframe and run the full backtest process.
-    for interval, n_bars in timeframes_to_test:
-        run_backtest_for_timeframe(SYMBOL, EXCHANGE, interval, n_bars)
+        # Loop through each timeframe and run the full backtest process.
+        for timeframe in timeframes_to_test:
+            print(f"\nRunning backtest on {timeframe}-minute timeframe...")
+            metrics, trades = run_backtest_for_timeframe(directory, SYMBOL, timeframe)
+            if metrics:
+                all_metrics[f"{timeframe}min"] = metrics
+
+        # After testing all timeframes, generate one consolidated report.
+        if all_metrics:
+            generate_consolidated_report(all_metrics, SYMBOL)
+        else:
+            print(f"\nNo trades were executed for {SYMBOL} across any timeframe. No report to generate.")
+
+        print(f"\n--- Consolidated Backtest for {SYMBOL} Complete ---")

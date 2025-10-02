@@ -28,6 +28,10 @@ cookies = None
 try:
     cookies = rookiepy.to_cookiejar(rookiepy.brave(['.tradingview.com']))
     print("Successfully loaded TradingView cookies.")
+    #_, df = Query().select('exchange', 'update_mode').limit(1_000_000).get_scanner_data(cookies=cookies)
+    #df = df.groupby('exchange')['update_mode'].value_counts()
+    #print(df)
+
 except Exception as e:
     print(f"Warning: Could not load TradingView cookies. Scanning will be disabled. Error: {e}")
 
@@ -258,10 +262,10 @@ def run_scan():
     try:
         # 1. Load previous squeeze state
         prev_squeeze_pairs = load_previous_squeeze_list_from_db()
-        EXCHANGE = ['AMEX', 'CBOE', 'NASDAQ', 'NYSE']
-        MARKET ='america'
-        #EXCHANGE ='NSE'
-        #MARKET ='india'
+        #EXCHANGE = ['AMEX', 'CBOE', 'NASDAQ', 'NYSE']
+        #MARKET ='america'
+        EXCHANGE ='NSE'
+        MARKET ='india'
 
         # 2. Find all stocks currently in a squeeze
         squeeze_conditions = [And(col(f'BB.upper{tf}') < col(f'KltChnl.upper{tf}'), col(f'BB.lower{tf}') > col(f'KltChnl.lower{tf}')) for tf in timeframes]
@@ -417,7 +421,7 @@ def background_scanner():
             with data_lock:
                 global latest_scan_dfs
                 latest_scan_dfs = scan_result_dfs
-        sleep(120)
+        sleep(60)
 
 # --- Flask Routes ---
 @app.route('/')
