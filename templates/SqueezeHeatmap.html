@@ -65,6 +65,9 @@
                     <span class="spinner"></span>
                     <span class="btn-text">Refresh</span>
                 </button>
+                <button id="show-all-fired-btn" class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-3 rounded-md flex items-center justify-center transition">
+                    Show All Fired
+                </button>
             </div>
             <p id="scan-status" class="text-sm text-gray-400"></p>
         </div>
@@ -89,6 +92,19 @@
         </div>
 
         <div class="tooltip"></div>
+
+        <!-- Side Pane for All Fired Events -->
+        <div id="all-fired-pane" class="fixed top-0 right-0 h-full w-80 bg-gray-800 shadow-lg transform translate-x-full transition-transform duration-300 ease-in-out z-20 border-l-2 border-gray-700">
+            <div class="p-4">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-lg font-bold">All Fired Today</h3>
+                    <button id="close-pane-btn" class="text-gray-400 hover:text-white">&times;</button>
+                </div>
+                <div id="all-fired-list" class="h-[calc(100vh-80px)] overflow-y-auto">
+                    <!-- Fired events will be dynamically inserted here -->
+                </div>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -99,8 +115,13 @@
         const autoScanToggle = document.getElementById('auto-scan-toggle');
         const rvolFilter = document.getElementById('rvol-filter');
         const scanStatus = document.getElementById('scan-status');
+        const allFiredPane = document.getElementById('all-fired-pane');
+        const closePaneBtn = document.getElementById('close-pane-btn');
+        const showAllFiredBtn = document.getElementById('show-all-fired-btn');
+        const allFiredList = document.getElementById('all-fired-list');
 
         let autoRefreshInterval;
+        let allFiredRefreshInterval;
 
         // --- Color Scales ---
         const rvolDomain = [0, 5];
@@ -349,6 +370,67 @@
             if (autoRefreshInterval) clearInterval(autoRefreshInterval);
         }
 
+        function renderAllFiredList(data) {
+            allFiredList.innerHTML = ''; // Clear previous content
+            if (data.length === 0) {
+                allFiredList.innerHTML = '<p class="text-gray-400 text-center">No squeezes have fired today.</p>';
+                return;
+            }
+
+            const listEl = document.createElement('ul');
+            listEl.className = 'space-y-2';
+
+            data.forEach(d => {
+                const itemEl = document.createElement('li');
+                itemEl.className = 'flex items-center p-2 bg-gray-700 rounded-md cursor-pointer hover:bg-gray-600';
+                itemEl.onclick = () => window.open(d.URL, "_blank");
+
+                const logoEl = d.logo ? `<img src="${d.logo}" class="w-6 h-6 mr-3 rounded-full">` : `<div class="w-6 h-6 mr-3 rounded-full bg-gray-600"></div>`;
+                const momentumColor = d.momentum === 'Bullish' ? 'text-green-400' : d.momentum === 'Bearish' ? 'text-red-400' : 'text-gray-400';
+
+                itemEl.innerHTML = `
+                    ${logoEl}
+                    <div class="flex-1">
+                        <div class="font-bold text-sm">${d.ticker.replace('NSE:', '')}</div>
+                        <div class="text-xs text-gray-400">
+                            Fired on <span class="font-semibold">${d.fired_timeframe}</span> | RVOL: ${d.rvol.toFixed(2)}
+                        </div>
+                    </div>
+                    <div class="text-right">
+                        <div class="text-xs font-semibold ${momentumColor}">${d.momentum}</div>
+                        <div class="text-xs text-gray-500">${formatTimeAgo(d.fired_timestamp)}</div>
+                    </div>
+                `;
+                listEl.appendChild(itemEl);
+            });
+            allFiredList.appendChild(listEl);
+        }
+
+        async function fetchAllFiredEvents() {
+            try {
+                const response = await fetch('/get_all_fired_events');
+                if (!response.ok) throw new Error('Failed to fetch');
+                const data = await response.json();
+                renderAllFiredList(data);
+            } catch (error) {
+                console.error("Failed to fetch all fired events:", error);
+                allFiredList.innerHTML = '<p class="text-red-500 text-center">Error loading data.</p>';
+            }
+        }
+
+        function showPane() {
+            allFiredPane.classList.remove('translate-x-full');
+            fetchAllFiredEvents(); // Fetch data when pane is opened
+            if (allFiredRefreshInterval) clearInterval(allFiredRefreshInterval);
+            allFiredRefreshInterval = setInterval(fetchAllFiredEvents, 10000); // Refresh every 10 seconds
+        }
+
+        function hidePane() {
+            allFiredPane.classList.add('translate-x-full');
+            if (allFiredRefreshInterval) clearInterval(allFiredRefreshInterval);
+        }
+
+
         // Initial setup
         manualScanBtn.addEventListener('click', manualScan);
         autoScanToggle.addEventListener('change', (event) => {
@@ -357,6 +439,10 @@
         rvolFilter.addEventListener('change', () => {
             fetchLatestData('filter-change');
         });
+
+        showAllFiredBtn.addEventListener('click', showPane);
+        closePaneBtn.addEventListener('click', hidePane);
+
 
         setupControls();
 

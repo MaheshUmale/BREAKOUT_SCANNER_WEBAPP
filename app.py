@@ -242,6 +242,18 @@ def load_recent_fired_events_from_db():
     conn.close()
     return df
 
+def load_all_day_fired_events_from_db():
+    """Loads all fired events from the database for the current day."""
+    conn = sqlite3.connect(DB_FILE, detect_types=sqlite3.PARSE_DECLTYPES)
+    today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    query = "SELECT * FROM fired_squeeze_events WHERE fired_timestamp >= ? ORDER BY fired_timestamp DESC"
+    df = pd.read_sql_query(query, conn, params=(today_start,))
+    conn.close()
+    # Convert timestamp to ISO format string for JSON serialization
+    if not df.empty and 'fired_timestamp' in df.columns:
+        df['fired_timestamp'] = pd.to_datetime(df['fired_timestamp']).dt.isoformat()
+    return df
+
 # --- Main Scanning Logic ---
 def run_scan():
     """
@@ -381,7 +393,7 @@ def run_scan():
                     append_df_to_csv(df_newly_fired, 'BBSCAN_FIRED_' + datetime.now().strftime('%d_%m_%y') + '.csv')
 
         # 4. Consolidate and prepare final data
-        cleanup_old_fired_events()
+        # cleanup_old_fired_events() # Disabled to keep all day's events
         df_recent_fired = load_recent_fired_events_from_db()
         if not df_recent_fired.empty:
             fired_events_list = df_recent_fired.to_dict('records')
@@ -487,6 +499,12 @@ def toggle_scan():
     data = request.get_json()
     auto_scan_enabled = data.get('enabled', auto_scan_enabled)
     return jsonify({"status": "success", "auto_scan_enabled": auto_scan_enabled})
+
+@app.route('/get_all_fired_events', methods=['GET'])
+def get_all_fired_events():
+    """Returns all fired squeeze events for the current day."""
+    fired_events_df = load_all_day_fired_events_from_db()
+    return jsonify(fired_events_df.to_dict('records'))
 
 if __name__ == '__main__':
     init_db()
