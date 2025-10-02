@@ -132,7 +132,7 @@ def plot_trades(df, trades, symbol, timeframe):
     except Exception as e:
         print(f"Could not generate plot for {symbol} on {timeframe}. Error: {e}")
 
-def load_and_resample_data(symbol, timeframe_minutes):
+def load_and_resample_data(directory , symbol, timeframe_minutes):
     """
     Loads 1-minute data for a symbol and resamples it to the specified timeframe.
 
@@ -144,6 +144,7 @@ def load_and_resample_data(symbol, timeframe_minutes):
         pd.DataFrame: Resampled OHLCV data, or None if file is not found.
     """
     filename = f"{symbol}_minute.csv"
+    filename  = os.path.join(directory, filename)
     if not os.path.exists(filename):
         print(f"Data file not found: {filename}")
         return None
@@ -303,11 +304,11 @@ def calculate_performance_metrics(trades, initial_capital=100000.0):
 
     return results
 
-def run_backtest_for_timeframe(symbol, timeframe_minutes):
+def run_backtest_for_timeframe(directory , symbol, timeframe_minutes):
     """
     Encapsulates the entire backtesting process for a single symbol and timeframe.
     """
-    df = load_and_resample_data(symbol, timeframe_minutes)
+    df = load_and_resample_data(directory, symbol, timeframe_minutes)
     if df is None:
         return None, None
 
@@ -368,29 +369,79 @@ def generate_consolidated_report(all_metrics, symbol):
 
     print(f"Consolidated report saved to {filename}")
 
+import re
+import os
+
+def get_csv_filenames(directory_path):
+    """
+    Returns a list of all CSV filenames in the specified directory.
+
+    Args:
+        directory_path (str): The path to the directory to scan.
+
+    Returns:
+        list: A list of strings, where each string is the name of a CSV file.
+    """
+    csv_files = []
+    for filename in os.listdir(directory_path):
+        if filename.endswith(".csv"):
+            csv_files.append(filename)
+    return csv_files
+
+def loadSYMBOLSFromDir(directory):
+    
+    # Example usage:
+    # directory = "/path/to/your/directory"  # Replace with the actual path
+    csv_filenames = get_csv_filenames(directory)
+    print(csv_filenames)
+    
+
+    # The regex pattern to capture the symbol
+    pattern = r"(.*)_minute.csv"
+
+    # A list to store the extracted symbols
+    symbols = []
+
+    # Loop through each filename in the list
+    for filename in csv_filenames:
+        match = re.search(pattern, filename)
+        if match:
+            # If a match is found, extract the captured group (the symbol)
+            symbol = match.group(1)
+            symbols.append(symbol)
+        else:
+            # Optional: Print a message for files that don't match the pattern
+            print(f"Skipped: '{filename}' (Pattern not found)")
+
+    print("\nExtracted symbols:")
+    print(symbols)
+    return symbols
+    
 
 if __name__ == "__main__":
     # --- Parameters ---
     SYMBOL = "TCS"  # The symbol for which to run the backtest.
                     # Requires a corresponding 'TCS_minute.csv' file.
 
+    directory = "D:\\py_code_workspace\\NSE _STOCK _DATA"
+    SYMBOLSLIST  = loadSYMBOLSFromDir(directory)
     # Define the list of timeframes (in minutes) to test.
     timeframes_to_test = [5, 15, 30]
+    for SYMBOL in SYMBOLSLIST:
+        all_metrics = {}
+        print(f"--- Starting Consolidated Backtest for {SYMBOL} ---")
 
-    all_metrics = {}
-    print(f"--- Starting Consolidated Backtest for {SYMBOL} ---")
+        # Loop through each timeframe and run the full backtest process.
+        for timeframe in timeframes_to_test:
+            print(f"\nRunning backtest on {timeframe}-minute timeframe...")
+            metrics, trades = run_backtest_for_timeframe(directory, SYMBOL, timeframe)
+            if metrics:
+                all_metrics[f"{timeframe}min"] = metrics
 
-    # Loop through each timeframe and run the full backtest process.
-    for timeframe in timeframes_to_test:
-        print(f"\nRunning backtest on {timeframe}-minute timeframe...")
-        metrics, trades = run_backtest_for_timeframe(SYMBOL, timeframe)
-        if metrics:
-            all_metrics[f"{timeframe}min"] = metrics
+        # After testing all timeframes, generate one consolidated report.
+        if all_metrics:
+            generate_consolidated_report(all_metrics, SYMBOL)
+        else:
+            print(f"\nNo trades were executed for {SYMBOL} across any timeframe. No report to generate.")
 
-    # After testing all timeframes, generate one consolidated report.
-    if all_metrics:
-        generate_consolidated_report(all_metrics, SYMBOL)
-    else:
-        print(f"\nNo trades were executed for {SYMBOL} across any timeframe. No report to generate.")
-
-    print(f"\n--- Consolidated Backtest for {SYMBOL} Complete ---")
+        print(f"\n--- Consolidated Backtest for {SYMBOL} Complete ---")
