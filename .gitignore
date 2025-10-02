@@ -3,3 +3,14 @@ __pycache__/
 *.pyc
 charts/*.*
 reports/*.*
+BBSCAN_FIRED_03_10_25.csv
+TRAIN_EVALUATE.py
+generate_datasetOLD.py
+generate_dataset_optimized.py
+squeeze_classifier_model.pkl
+squeeze_classifier_modelOLD.pkl
+train2.py
+training_dataset OLD .csv
+training_dataset.csv
+training_dataset2.csv
+training_dataset22.csv

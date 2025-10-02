@@ -132,6 +132,7 @@ def plot_trades(df, trades, symbol, timeframe):
     except Exception as e:
         print(f"Could not generate plot for {symbol} on {timeframe}. Error: {e}")
 
+<<<<<<< HEAD
 def load_and_resample_data(directory , symbol, timeframe_minutes):
     """
     Loads 1-minute data for a symbol and resamples it to the specified timeframe.
@@ -145,6 +146,44 @@ def load_and_resample_data(directory , symbol, timeframe_minutes):
     """
     filename = f"{symbol}_minute.csv"
     filename  = os.path.join(directory, filename)
+=======
+def get_symbols_from_directory(directory):
+    """
+    Scans a directory for CSV files ending in '_minute.csv' and extracts the symbols.
+
+    Args:
+        directory (str): The path to the directory containing the data files.
+
+    Returns:
+        list: A list of symbols (e.g., ['TCS', 'RELIANCE']).
+    """
+    symbols = []
+    if not os.path.isdir(directory):
+        print(f"Error: Data directory not found at '{directory}'")
+        return symbols
+
+    for filename in os.listdir(directory):
+        if filename.endswith("_minute.csv"):
+            symbol = filename.replace("_minute.csv", "")
+            symbols.append(symbol)
+
+    print(f"Found {len(symbols)} symbols in '{directory}': {symbols}")
+    return symbols
+
+def load_and_resample_data(symbol, data_directory, timeframe_minutes):
+    """
+    Loads 1-minute data for a symbol from a specific directory and resamples it.
+
+    Args:
+        symbol (str): The stock symbol (e.g., 'TCS').
+        data_directory (str): The directory where the CSV file is located.
+        timeframe_minutes (int): The target timeframe in minutes (e.g., 5, 15).
+
+    Returns:
+        pd.DataFrame: Resampled OHLCV data, or None if file is not found.
+    """
+    filename = os.path.join(data_directory, f"{symbol}_minute.csv")
+>>>>>>> 07dfd3579ec5778ff89b3f27a3f7b7a5df6f86cd
     if not os.path.exists(filename):
         print(f"Data file not found: {filename}")
         return None
@@ -304,11 +343,19 @@ def calculate_performance_metrics(trades, initial_capital=100000.0):
 
     return results
 
+<<<<<<< HEAD
 def run_backtest_for_timeframe(directory , symbol, timeframe_minutes):
     """
     Encapsulates the entire backtesting process for a single symbol and timeframe.
     """
     df = load_and_resample_data(directory, symbol, timeframe_minutes)
+=======
+def run_backtest_for_timeframe(symbol, data_directory, timeframe_minutes):
+    """
+    Encapsulates the entire backtesting process for a single symbol and timeframe.
+    """
+    df = load_and_resample_data(symbol, data_directory, timeframe_minutes)
+>>>>>>> 07dfd3579ec5778ff89b3f27a3f7b7a5df6f86cd
     if df is None:
         return None, None
 
@@ -325,6 +372,96 @@ def run_backtest_for_timeframe(directory , symbol, timeframe_minutes):
     else:
         print(f"\nNo trades were executed for {symbol} on {timeframe_str}.")
         return None, None
+<<<<<<< HEAD
+=======
+
+def generate_consolidated_report(all_metrics, symbol):
+    """
+    Generates a consolidated report from all backtest runs and saves it to a file.
+    """
+    reports_dir = "reports"
+    if not os.path.exists(reports_dir):
+        os.makedirs(reports_dir)
+
+    filename = os.path.join(reports_dir, f"{symbol}_consolidated_report.txt")
+
+    with open(filename, 'w') as f:
+        f.write(f"--- Consolidated Backtest Performance Report for {symbol} ---\n")
+        f.write("=" * 60 + "\n")
+
+        for timeframe, metrics in all_metrics.items():
+            f.write(f"\n--- Timeframe: {timeframe} ---\n")
+            if not metrics:
+                f.write("No trades to analyze.\n")
+                continue
+
+            def _write_subset(name, data):
+                f.write(f"\n{name} Performance:\n")
+                if data and data['Total Trades'] > 0:
+                    f.write(f"  Total Trades: {data['Total Trades']}\n")
+                    f.write(f"  Win Rate: {data['Win Rate (%)']:.2f}%\n")
+                    f.write(f"  Total Profit/Loss: ${data['Total Profit/Loss ($)']:.2f}\n")
+                    if 'Average Profit per Trade' in data:
+                        f.write(f"  Average Profit per Trade: ${data['Average Profit per Trade']:.2f}\n")
+                    if 'Maximum Drawdown (%)' in data:
+                        f.write(f"  Maximum Drawdown: {data['Maximum Drawdown (%)']:.2f}%\n")
+                else:
+                    f.write("  No trades to analyze for this subset.\n")
+
+            _write_subset("Overall", metrics.get('Overall', {}))
+            _write_subset("Long", metrics.get('Long', {}))
+            _write_subset("Short", metrics.get('Short', {}))
+            f.write("-" * 40 + "\n")
+
+        f.write("\n" + "=" * 60 + "\n")
+        f.write("--- End of Report ---\n")
+
+    print(f"Consolidated report saved to {filename}")
+
+
+def generate_master_summary(all_results):
+    """
+    Generates a master summary CSV report for all symbols and timeframes.
+
+    Args:
+        all_results (dict): A dictionary containing backtest results for all symbols.
+    """
+    summary_data = []
+    for symbol, timeframes in all_results.items():
+        if not timeframes:
+            summary_data.append({
+                'Symbol': symbol,
+                'Timeframe': 'N/A',
+                'Total Trades': 0,
+                'Win Rate (%)': 0,
+                'Total Profit/Loss ($)': 0
+            })
+            continue
+
+        for timeframe, metrics in timeframes.items():
+            overall_metrics = metrics.get('Overall', {})
+            summary_data.append({
+                'Symbol': symbol,
+                'Timeframe': timeframe,
+                'Total Trades': overall_metrics.get('Total Trades', 0),
+                'Win Rate (%)': f"{overall_metrics.get('Win Rate (%)', 0):.2f}",
+                'Total Profit/Loss ($)': f"{overall_metrics.get('Total Profit/Loss ($)', 0):.2f}"
+            })
+
+    if not summary_data:
+        print("No data available to generate a master summary report.")
+        return
+
+    reports_dir = "reports"
+    if not os.path.exists(reports_dir):
+        os.makedirs(reports_dir)
+
+    summary_df = pd.DataFrame(summary_data)
+    filename = os.path.join(reports_dir, "master_summary_report.csv")
+
+    summary_df.to_csv(filename, index=False)
+    print(f"\nMaster summary report saved to {filename}")
+>>>>>>> 07dfd3579ec5778ff89b3f27a3f7b7a5df6f86cd
 
 def generate_consolidated_report(all_metrics, symbol):
     """
@@ -420,6 +557,7 @@ def loadSYMBOLSFromDir(directory):
 
 if __name__ == "__main__":
     # --- Parameters ---
+<<<<<<< HEAD
     SYMBOL = "TCS"  # The symbol for which to run the backtest.
                     # Requires a corresponding 'TCS_minute.csv' file.
 
@@ -445,3 +583,41 @@ if __name__ == "__main__":
             print(f"\nNo trades were executed for {SYMBOL} across any timeframe. No report to generate.")
 
         print(f"\n--- Consolidated Backtest for {SYMBOL} Complete ---")
+=======
+    DATA_DIRECTORY = "."  # Directory containing the <SYMBOL>_minute.csv files.
+
+    # Define the list of timeframes (in minutes) to test.
+    timeframes_to_test = [5, 15, 30]
+
+    # --- Main Execution ---
+    symbols_to_test = get_symbols_from_directory(DATA_DIRECTORY)
+    all_results = {}  # To store results for all symbols and timeframes
+
+    if not symbols_to_test:
+        print("No symbols found to backtest. Exiting.")
+    else:
+        for symbol in symbols_to_test:
+            print(f"\n{'='*20} Starting Backtest for: {symbol.upper()} {'='*20}")
+            symbol_metrics = {}
+            for timeframe in timeframes_to_test:
+                print(f"\n-- Running backtest on {timeframe}-minute timeframe... --")
+                metrics, trades = run_backtest_for_timeframe(symbol, DATA_DIRECTORY, timeframe)
+                if metrics:
+                    symbol_metrics[f"{timeframe}min"] = metrics
+
+            all_results[symbol] = symbol_metrics
+
+            # Generate the individual report for the current symbol
+            if symbol_metrics:
+                generate_consolidated_report(symbol_metrics, symbol)
+            else:
+                print(f"\nNo trades were executed for {symbol} across any timeframe.")
+
+            print(f"\n{'='*20} Completed Backtest for: {symbol.upper()} {'='*20}")
+
+        # After all symbols are processed, generate the master summary report
+        if all_results:
+            generate_master_summary(all_results)
+
+        print("\n\n--- All Backtests Complete ---")
+>>>>>>> 07dfd3579ec5778ff89b3f27a3f7b7a5df6f86cd
