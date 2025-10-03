@@ -255,7 +255,12 @@ def load_all_day_fired_events_from_db():
     conn.close()
     # Convert timestamp to ISO format string for JSON serialization
     if not df.empty and 'fired_timestamp' in df.columns:
-        df['fired_timestamp'] = pd.to_datetime(df['fired_timestamp']).dt.isoformat()
+   #     df['fired_timestamp'] = pd.to_datetime(df['fired_timestamp']).dt.isoformat()
+        # First, convert the column to datetime objects
+        df['fired_timestamp'] = pd.to_datetime(df['fired_timestamp'])
+
+        # Then, apply the isoformat() method to each element
+        df['fired_timestamp'] = df['fired_timestamp'].apply(lambda x: x.isoformat())
     return df
 
 # --- Main Scanning Logic ---
@@ -283,8 +288,8 @@ def run_scan():
         squeeze_conditions = [And(col(f'BB.upper{tf}') < col(f'KltChnl.upper{tf}'), col(f'BB.lower{tf}') > col(f'KltChnl.lower{tf}')) for tf in timeframes]
         filters = [
             col('is_primary') == True, col('typespecs').has('common'), col('type') == 'stock',
-            #col('exchange') == EXCHANGE, 
-            col('exchange').isin(EXCHANGE),
+            col('exchange') == EXCHANGE, 
+            #col('exchange').isin(EXCHANGE),
             col('close').between(20, 10000), col('active_symbol') == True,
             col('average_volume_10d_calc|5') > 50000, col('Value.Traded|5') > 10000000,
             Or(*squeeze_conditions)
