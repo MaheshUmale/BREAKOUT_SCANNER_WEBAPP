@@ -22,6 +22,16 @@ latest_scan_dfs = {
 }
 data_lock = threading.Lock()
 
+# --- Global state for scanner settings ---
+scanner_settings = {
+    "market": "india",
+    "exchange": "NSE",
+    "min_price": 20,
+    "max_price": 10000,
+    "min_volume": 50000,
+    "min_value_traded": 10000000
+}
+
 
 import rookiepy
 cookies = None
@@ -264,7 +274,7 @@ def load_all_day_fired_events_from_db():
     return df
 
 # --- Main Scanning Logic ---
-def run_scan():
+def run_scan(settings):
     """
     Runs a full squeeze scan, processes the data, saves it to the database,
     and returns the processed dataframes.
@@ -279,22 +289,17 @@ def run_scan():
     try:
         # 1. Load previous squeeze state
         prev_squeeze_pairs = load_previous_squeeze_list_from_db()
-        #EXCHANGE = ['AMEX', 'CBOE', 'NASDAQ', 'NYSE']
-        #MARKET ='america'
-        EXCHANGE ='NSE'
-        MARKET ='india'
 
         # 2. Find all stocks currently in a squeeze
         squeeze_conditions = [And(col(f'BB.upper{tf}') < col(f'KltChnl.upper{tf}'), col(f'BB.lower{tf}') > col(f'KltChnl.lower{tf}')) for tf in timeframes]
         filters = [
             col('is_primary') == True, col('typespecs').has('common'), col('type') == 'stock',
-            col('exchange') == EXCHANGE, 
-            #col('exchange').isin(EXCHANGE),
-            col('close').between(20, 10000), col('active_symbol') == True,
-            col('average_volume_10d_calc|5') > 50000, col('Value.Traded|5') > 10000000,
+            col('exchange') == settings['exchange'],
+            col('close').between(settings['min_price'], settings['max_price']), col('active_symbol') == True,
+            col('average_volume_10d_calc|5') > settings['min_volume'], col('Value.Traded|5') > settings['min_value_traded'],
             Or(*squeeze_conditions)
         ]
-        query_in_squeeze = Query().select(*select_cols).where2(And(*filters)).set_markets(MARKET)
+        query_in_squeeze = Query().select(*select_cols).where2(And(*filters)).set_markets(settings['market'])
 
         _, df_in_squeeze = query_in_squeeze.get_scanner_data(cookies=cookies)
 
@@ -434,7 +439,9 @@ def background_scanner():
     while True:
         if auto_scan_enabled:
             print("Auto-scanning...")
-            scan_result_dfs = run_scan()
+            with data_lock:
+                current_settings = scanner_settings.copy()
+            scan_result_dfs = run_scan(current_settings)
             with data_lock:
                 global latest_scan_dfs
                 latest_scan_dfs = scan_result_dfs
@@ -461,7 +468,9 @@ def compact_page():
 def scan_endpoint():
     """Triggers a new scan and returns the filtered results."""
     rvol_threshold = request.json.get('rvol', 0) if request.json else 0
-    scan_results = run_scan()
+    with data_lock:
+        current_settings = scanner_settings.copy()
+    scan_results = run_scan(current_settings)
 
     if rvol_threshold > 0:
         for key in scan_results:
@@ -514,6 +523,27 @@ def get_all_fired_events():
     """Returns all fired squeeze events for the current day."""
     fired_events_df = load_all_day_fired_events_from_db()
     return jsonify(fired_events_df.to_dict('records'))
+
+@app.route('/update_settings', methods=['POST'])
+def update_settings():
+    """Updates the global scanner settings."""
+    global scanner_settings
+    new_settings = request.get_json()
+    with data_lock:
+        for key, value in new_settings.items():
+            if key in scanner_settings:
+                # Basic type casting for robustness
+                try:
+                    if isinstance(scanner_settings[key], int):
+                        scanner_settings[key] = int(value)
+                    elif isinstance(scanner_settings[key], float):
+                        scanner_settings[key] = float(value)
+                    else:
+                        scanner_settings[key] = value
+                except (ValueError, TypeError):
+                    # Keep original value if casting fails
+                    pass
+    return jsonify({"status": "success", "settings": scanner_settings})
 
 if __name__ == '__main__':
     init_db()

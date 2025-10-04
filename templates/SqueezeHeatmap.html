@@ -48,10 +48,9 @@
         <!-- Scan Control Section -->
         <div class="bg-gray-800 p-3 rounded-lg mb-6 border border-gray-700 flex justify-between items-center">
             <div class="flex items-center space-x-4">
-                <div class="flex items-center">
-                    <input id="auto-scan-toggle" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 bg-gray-700 border-gray-600" checked>
-                    <label for="auto-scan-toggle" class="ml-2 block text-sm text-gray-300">Auto-Scan</label>
-                </div>
+                <button id="toggle-scan-btn" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-3 rounded-md flex items-center justify-center transition">
+                    Stop Scan
+                </button>
                 <div class="flex items-center">
                     <label for="rvol-filter" class="text-sm text-gray-300 mr-2">RVOL:</label>
                     <select id="rvol-filter" class="bg-gray-700 border border-gray-600 text-white text-sm rounded-md focus:ring-blue-500 focus:border-blue-500 block p-1.5">
@@ -67,6 +66,9 @@
                 </button>
                 <button id="show-all-fired-btn" class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-3 rounded-md flex items-center justify-center transition">
                     Show All Fired
+                </button>
+                <button id="settings-btn" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-3 rounded-md flex items-center justify-center transition">
+                    Settings
                 </button>
             </div>
             <p id="scan-status" class="text-sm text-gray-400"></p>
@@ -105,6 +107,48 @@
                 </div>
             </div>
         </div>
+
+        <!-- Settings Modal -->
+        <div id="settings-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center z-30">
+            <div class="bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-md border border-gray-700">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-lg font-bold">Scanner Settings</h3>
+                    <button id="close-settings-btn" class="text-gray-400 hover:text-white">&times;</button>
+                </div>
+                <form id="settings-form">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label for="market" class="block text-sm font-medium text-gray-300">Market</label>
+                            <input type="text" id="market" name="market" class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                        </div>
+                        <div>
+                            <label for="exchange" class="block text-sm font-medium text-gray-300">Exchange</label>
+                            <input type="text" id="exchange" name="exchange" class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                        </div>
+                        <div>
+                            <label for="min_price" class="block text-sm font-medium text-gray-300">Min Price</label>
+                            <input type="number" id="min_price" name="min_price" class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                        </div>
+                        <div>
+                            <label for="max_price" class="block text-sm font-medium text-gray-300">Max Price</label>
+                            <input type="number" id="max_price" name="max_price" class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                        </div>
+                        <div>
+                            <label for="min_volume" class="block text-sm font-medium text-gray-300">Min Volume</label>
+                            <input type="number" id="min_volume" name="min_volume" class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                        </div>
+                        <div>
+                            <label for="min_value_traded" class="block text-sm font-medium text-gray-300">Min Value Traded</label>
+                            <input type="number" id="min_value_traded" name="min_value_traded" class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                        </div>
+                    </div>
+                    <div class="mt-6 flex justify-end space-x-3">
+                        <button type="button" id="cancel-settings-btn" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-md transition">Cancel</button>
+                        <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md transition">Save</button>
+                    </div>
+                </form>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -112,16 +156,22 @@
         const inSqueezeContainer = d3.select("#in-squeeze-container");
         const tooltip = d3.select(".tooltip");
         const manualScanBtn = document.getElementById('manual-scan-btn');
-        const autoScanToggle = document.getElementById('auto-scan-toggle');
+        const toggleScanBtn = document.getElementById('toggle-scan-btn');
         const rvolFilter = document.getElementById('rvol-filter');
         const scanStatus = document.getElementById('scan-status');
         const allFiredPane = document.getElementById('all-fired-pane');
         const closePaneBtn = document.getElementById('close-pane-btn');
         const showAllFiredBtn = document.getElementById('show-all-fired-btn');
         const allFiredList = document.getElementById('all-fired-list');
+        const settingsBtn = document.getElementById('settings-btn');
+        const settingsModal = document.getElementById('settings-modal');
+        const closeSettingsBtn = document.getElementById('close-settings-btn');
+        const cancelSettingsBtn = document.getElementById('cancel-settings-btn');
+        const settingsForm = document.getElementById('settings-form');
 
         let autoRefreshInterval;
         let allFiredRefreshInterval;
+        let isAutoScanning = true; // Start with auto-scanning enabled
 
         // --- Color Scales ---
         const rvolDomain = [0, 5];
@@ -348,12 +398,19 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ enabled })
                 });
+
                 if (enabled) {
                     startAutoRefresh();
                     scanStatus.textContent = "Auto-scan enabled.";
+                    toggleScanBtn.textContent = 'Stop Scan';
+                    toggleScanBtn.classList.remove('bg-green-600', 'hover:bg-green-700');
+                    toggleScanBtn.classList.add('bg-red-600', 'hover:bg-red-700');
                 } else {
                     stopAutoRefresh();
                     scanStatus.textContent = "Auto-scan disabled.";
+                    toggleScanBtn.textContent = 'Start Scan';
+                    toggleScanBtn.classList.remove('bg-red-600', 'hover:bg-red-700');
+                    toggleScanBtn.classList.add('bg-green-600', 'hover:bg-green-700');
                 }
             } catch (error) {
                 console.error("Failed to toggle auto-scan:", error);
@@ -431,10 +488,53 @@
         }
 
 
+        function showSettingsModal() { settingsModal.classList.remove('hidden'); }
+        function hideSettingsModal() { settingsModal.classList.add('hidden'); }
+
+        function loadSettings() {
+            const savedSettings = JSON.parse(localStorage.getItem('scannerSettings'));
+            if (savedSettings) {
+                Object.keys(savedSettings).forEach(key => {
+                    const input = settingsForm.elements[key];
+                    if (input) {
+                        input.value = savedSettings[key];
+                    }
+                });
+            }
+        }
+
+        async function saveSettings(event) {
+            event.preventDefault();
+            const formData = new FormData(settingsForm);
+            const newSettings = {};
+            for (const [key, value] of formData.entries()) {
+                // Convert numeric strings to numbers
+                newSettings[key] = isNaN(value) || value === '' ? value : Number(value);
+            }
+
+            localStorage.setItem('scannerSettings', JSON.stringify(newSettings));
+
+            try {
+                await fetch('/update_settings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(newSettings)
+                });
+                hideSettingsModal();
+                // Optionally, trigger a manual scan to reflect new settings immediately
+                manualScan();
+            } catch (error) {
+                console.error("Failed to update settings:", error);
+                alert("Error: Could not save settings to the server.");
+            }
+        }
+
+
         // Initial setup
         manualScanBtn.addEventListener('click', manualScan);
-        autoScanToggle.addEventListener('change', (event) => {
-            toggleAutoScan(event.target.checked);
+        toggleScanBtn.addEventListener('click', () => {
+            isAutoScanning = !isAutoScanning;
+            toggleAutoScan(isAutoScanning);
         });
         rvolFilter.addEventListener('change', () => {
             fetchLatestData('filter-change');
@@ -443,11 +543,17 @@
         showAllFiredBtn.addEventListener('click', showPane);
         closePaneBtn.addEventListener('click', hidePane);
 
+        settingsBtn.addEventListener('click', showSettingsModal);
+        closeSettingsBtn.addEventListener('click', hideSettingsModal);
+        cancelSettingsBtn.addEventListener('click', hideSettingsModal);
+        settingsForm.addEventListener('submit', saveSettings);
+
 
         setupControls();
+        loadSettings();
 
         // Start with auto-refresh enabled
-        if (autoScanToggle.checked) {
+        if (isAutoScanning) {
             startAutoRefresh();
         }
     </script>
