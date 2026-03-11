@@ -87,8 +87,8 @@
             <!-- In Squeeze Section -->
             <div id="in-squeeze-section-wrapper">
                 <h2 class="section-title"><span class="arrow">&#9662;</span>In Squeeze</h2>
-                <div id="in-squeeze-container">
-                    <p class='text-gray-400 text-center py-4'>Run a scan to see stocks currently in a squeeze.</p>
+                <div id="in-squeeze-container" class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+                    <p class='col-span-full text-gray-400 text-center py-4'>Run a scan to see stocks currently in a squeeze.</p>
                 </div>
             </div>
         </div>
@@ -270,55 +270,41 @@
         }
 
         function renderInSqueeze(data) {
-            inSqueezeContainer.html(data.length === 0 ? "<p class='text-gray-400 text-center py-4'>No stocks match the criteria.</p>" : "");
-             if (data.length > 0) inSqueezeContainer.html("");
-
+            if (data.length === 0) {
+                inSqueezeContainer.html("<p class='col-span-full text-gray-400 text-center py-4'>No stocks match the criteria.</p>");
+            } else {
+                inSqueezeContainer.html("");
+            }
 
             const tfOrder = ['Monthly', 'Weekly', '4H', '2H', '1H', '30m', '15m', '5m', '1m', 'Daily', 'Unknown'];
             const groupedData = d3.group(data, d => d.highest_tf);
             const sortedGroups = Array.from(groupedData.entries()).sort((a, b) => tfOrder.indexOf(a[0]) - tfOrder.indexOf(b[0]));
 
-            const groups = inSqueezeContainer.selectAll('.timeframe-group').data(sortedGroups, d => d[0]);
+            const groups = inSqueezeContainer.selectAll('.timeframe-box').data(sortedGroups, d => d[0]);
             groups.exit().remove();
 
-            const enterGroups = groups.enter().append('div').attr('class', 'timeframe-group');
+            const enterGroups = groups.enter().append('div').attr('class', 'timeframe-box');
             const title = enterGroups.append('h2').attr('class', 'timeframe-title');
             title.append('span').attr('class', 'arrow').html('&#9662;');
             title.append('span');
-
-            const box = enterGroups.append('div').attr('class', 'timeframe-box');
-            const momentumCols = box.append('div').attr('class', 'momentum-columns');
-            const bullishCol = momentumCols.append('div').attr('class', 'bullish-col');
-            bullishCol.append('h3').attr('class', 'momentum-title').text('Bullish');
-            bullishCol.append('div').attr('class', 'grid-container');
-
-            const bearishCol = momentumCols.append('div').attr('class', 'bearish-col');
-            bearishCol.append('h3').attr('class', 'momentum-title').text('Bearish');
-            bearishCol.append('div').attr('class', 'grid-container');
+            enterGroups.append('div').attr('class', 'grid-container');
 
             const updateGroups = enterGroups.merge(groups);
             updateGroups.select('.timeframe-title span:last-child').text(d => `${d[0]} (${d[1].length})`);
+
             updateGroups.select('.timeframe-title').on('click', function() {
-                const group = d3.select(this.parentNode);
-                const box = group.select('.timeframe-box');
-                const isCollapsed = box.style('display') === 'none';
-                box.style('display', isCollapsed ? 'block' : 'none');
+                const box = d3.select(this.parentNode);
+                const grid = box.select('.grid-container');
+                const isCollapsed = grid.style('display') === 'none';
+                grid.style('display', isCollapsed ? 'grid' : 'none');
                 d3.select(this).classed('collapsed', !isCollapsed);
             });
 
             updateGroups.each(function([tf, stocks]) {
-                const bullishStocks = stocks.filter(s => s.momentum === 'Bullish').sort((a,b) => b.value - a.value);
-                const bearishStocks = stocks.filter(s => s.momentum === 'Bearish').sort((a,b) => b.value - a.value);
-                const bullishColEl = d3.select(this).select('.bullish-col');
-                const bearishColEl = d3.select(this).select('.bearish-col');
-                bullishColEl.style('display', bullishStocks.length > 0 ? null : 'none');
-                bearishColEl.style('display', bearishStocks.length > 0 ? null : 'none');
-                const bullishCells = bullishColEl.select('.grid-container').selectAll('.cell').data(bullishStocks, d => d.name);
-                bullishCells.exit().remove();
-                renderCells(bullishCells, 'in_squeeze');
-                const bearishCells = bearishColEl.select('.grid-container').selectAll('.cell').data(bearishStocks, d => d.name);
-                bearishCells.exit().remove();
-                renderCells(bearishCells, 'in_squeeze');
+                const sortedStocks = stocks.sort((a,b) => b.value - a.value);
+                const cells = d3.select(this).select('.grid-container').selectAll('.cell').data(sortedStocks, d => d.name);
+                cells.exit().remove();
+                renderCells(cells, 'in_squeeze');
             });
         }
 
@@ -328,7 +314,7 @@
                 const container = wrapper.select('#fired-container, #in-squeeze-container');
                 if (container.empty()) return;
                 const isCollapsed = container.style('display') === 'none';
-                let displayStyle = container.attr('id') === 'fired-container' ? 'grid' : 'block';
+                let displayStyle = 'grid';
                 container.style('display', isCollapsed ? displayStyle : 'none');
                 d3.select(this).classed('collapsed', !isCollapsed);
             });
