@@ -105,9 +105,9 @@ def generate_heatmap_data(df):
 # --- Configuration ---
 DB_FILE = 'squeeze_history.db'
 # Timeframe Configuration
-timeframes = ['', '|1', '|5', '|15', '|30', '|60', '|120', '|240', '|1W', '|1M']
-tf_order_map = {'|1M': 10, '|1W': 9, '|240': 8, '|120': 7, '|60': 6, '|30': 5, '|15': 4, '|5': 3, '|1': 2, '': 1}
-tf_display_map = {'': 'Daily', '|1': '1m', '|5': '5m', '|15': '15m', '|30': '30m', '|60': '1H', '|120': '2H', '|240': '4H', '|1W': 'Weekly', '|1M': 'Monthly'}
+timeframes = [ '|1', '|5', '|15', '|30', '|60', '|120', '|240','', '|1W', '|1M']
+tf_order_map = {'|1M': 10, '|1W': 9, '': 8, '|240': 7, '|120': 6, '|60': 5, '|30': 4, '|15': 3, '|5': 2, '|1': 1}
+tf_display_map = { '|1': '1m', '|5': '5m', '|15': '15m', '|30': '30m', '|60': '1H', '|120': '2H', '|240': '4H', '': 'Daily', '|1W': 'Weekly', '|1M': 'Monthly'}
 tf_suffix_map = {v: k for k, v in tf_display_map.items()}
 
 # Construct select columns for all timeframes
