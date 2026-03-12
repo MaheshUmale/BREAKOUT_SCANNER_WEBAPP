@@ -1,4 +1,5 @@
 pandas
+numpy
 pandas-ta
 tradingview-screener
 Flask
