@@ -456,6 +456,10 @@ def index():
 def fired_page():
     return render_template('Fired.html')
 
+@app.route('/fired_4d')
+def fired_4d_page():
+    return render_template('Fired4D.html')
+
 @app.route('/formed')
 def formed_page():
     return render_template('Formed.html')
