@@ -77,23 +77,23 @@
                 <div class="bg-gray-900/50 p-3 rounded-lg">
                     <h3 class="font-bold text-gray-300 mb-1 uppercase tracking-wider">Spatial Dimensions (3D)</h3>
                     <p>• <strong>X:</strong> Time of Event</p>
-                    <p>• <strong>Y:</strong> Squeeze Timeframe (Short → Long)</p>
-                    <p>• <strong>Z:</strong> Relative Volume (RVOL)</p>
+                    <p>• <strong>Y:</strong> STOCK (Symbol)</p>
+                    <p>• <strong>Z:</strong> Squeeze Timeframe (Short → Long)</p>
                 </div>
                 <div class="bg-gray-900/50 p-3 rounded-lg">
                     <h3 class="font-bold text-gray-300 mb-1 uppercase tracking-wider">Data Mappings (4D/5D)</h3>
                     <p>• <strong>Color:</strong> Momentum (Bullish/Bearish)</p>
-                    <p>• <strong>Size:</strong> Squeeze Count (Multi-TF Confluence)</p>
+                    <p>• <strong>Size:</strong> Relative Volume (RVOL)</p>
                 </div>
                 <div class="bg-gray-900/50 p-3 rounded-lg">
-                    <h3 class="font-bold text-gray-300 mb-1 uppercase tracking-wider">Color Legend</h3>
+                    <h3 class="font-bold text-gray-300 mb-1 uppercase tracking-wider">Visual Cues</h3>
                     <div class="flex items-center space-x-2 mt-1">
                         <span class="w-3 h-3 bg-green-500 rounded-full"></span>
                         <span>Bullish Breakout</span>
                     </div>
                     <div class="flex items-center space-x-2">
-                        <span class="w-3 h-3 bg-red-500 rounded-full"></span>
-                        <span>Bearish Breakout</span>
+                        <span class="w-3 h-3 bg-red-500 border border-yellow-400 rounded-full"></span>
+                        <span>Yellow Border: Confluence</span>
                     </div>
                 </div>
                 <div class="bg-gray-900/50 p-3 rounded-lg">
@@ -156,26 +156,40 @@
         }
 
         function renderPlotly(data) {
+            // New Mappings:
+            // X: Time
+            // Y: Stock (Ticker)
+            // Z: Timeframe
+            // Color: Momentum
+            // Size: RVOL
+            // Border: Confluence
+
             const x = data.map(d => new Date(d.fired_timestamp));
-            const y = data.map(d => d.fired_timeframe);
-            const z = data.map(d => d.rvol);
-            const tickers = data.map(d => d.ticker.replace('NSE:', ''));
+            const y = data.map(d => d.ticker.replace('NSE:', ''));
+            const z = data.map(d => d.fired_timeframe);
+
             const colors = data.map(d => d.momentum === 'Bullish' ? '#10b981' : d.momentum === 'Bearish' ? '#ef4444' : '#6b7280');
-            const sizes = data.map(d => (d.SqueezeCount || 1) * 10 + 5);
+            // Scale RVOL for visible size differences (clamped for sanity)
+            const sizes = data.map(d => Math.min(Math.max(d.rvol * 5, 5), 40));
+
+            const borderColors = data.map(d => d.confluence ? '#fbbf24' : 'rgba(255,255,255,0.5)');
+            const borderWidths = data.map(d => d.confluence ? 2 : 0.5);
 
             const trace = {
                 x: x, y: y, z: z,
-                mode: 'markers+text',
+                mode: 'markers',
                 type: 'scatter3d',
-                text: tickers,
-                textposition: 'top center',
+                text: data.map(d => `${d.ticker.replace('NSE:', '')} | RVOL: ${d.rvol.toFixed(2)} | Confluence: ${d.confluence ? 'YES' : 'No'}`),
                 marker: {
                     size: sizes,
                     color: colors,
                     opacity: 0.8,
-                    line: { color: 'white', width: 0.5 }
+                    line: {
+                        color: borderColors,
+                        width: borderWidths
+                    }
                 },
-                hovertemplate: '<b>%{text}</b><br>Time: %{x}<br>TF: %{y}<br>RVOL: %{z:.2f}<br><extra></extra>'
+                hovertemplate: '<b>%{text}</b><br>Time: %{x}<br>TF: %{z}<br><extra></extra>'
             };
 
             const layout = {
@@ -186,11 +200,14 @@
                 scene: {
                     xaxis: { title: 'Time', gridcolor: '#374151', zerolinecolor: '#374151' },
                     yaxis: {
+                        title: 'Stock', gridcolor: '#374151', zerolinecolor: '#374151',
+                        type: 'category'
+                    },
+                    zaxis: {
                         title: 'Timeframe', gridcolor: '#374151', zerolinecolor: '#374151',
                         type: 'category', categoryorder: 'array', categoryarray: tfOrder
                     },
-                    zaxis: { title: 'RVOL', gridcolor: '#374151', zerolinecolor: '#374151' },
-                    camera: { eye: { x: 1.5, y: 1.5, z: 1.5 } }
+                    camera: { eye: { x: 1.8, y: 1.8, z: 1.2 } }
                 }
             };
 
