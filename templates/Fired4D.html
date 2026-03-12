@@ -3,72 +3,65 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>4D/5D Fired Squeezes View</title>
+    <title>4D/5D Fired Squeezes 3D View</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
     <style>
         body { font-family: sans-serif; background-color: #111827; color: white; }
-        .bubble { stroke-width: 1.5px; opacity: 0.8; transition: opacity 0.2s, stroke-width 0.2s; cursor: pointer; }
-        .bubble:hover { opacity: 1; stroke-width: 3px; }
-        .confluence { stroke: #fbbf24; stroke-width: 3px; stroke-dasharray: 2,2; }
-        .tooltip { position: absolute; text-align: center; padding: 10px; font: 12px sans-serif; background: #1f2937; border: 1px solid #4b5563; border-radius: 8px; pointer-events: none; opacity: 0; color: white; z-index: 20; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
-        .axis-label { font-size: 14px; fill: #9ca3af; }
-        .grid line { stroke: #374151; stroke-opacity: 0.5; shape-rendering: crispEdges; }
-        .grid path { stroke-width: 0; }
+        #chart-container { width: 100%; height: 75vh; border-radius: 0.75rem; overflow: hidden; }
     </style>
 </head>
 <body class="bg-gray-900">
     <div class="container mx-auto p-4 md:p-6">
-        <header class="flex justify-between items-center mb-8">
-            <h1 class="text-2xl md:text-3xl font-bold">4D/5D Fired Squeezes Visualization</h1>
+        <header class="flex justify-between items-center mb-6">
+            <div>
+                <h1 class="text-2xl md:text-3xl font-bold">4D/5D Squeeze Analysis</h1>
+                <p class="text-gray-400 text-sm">Interactive 3D Spatial Visualization of Today's Fired Events</p>
+            </div>
             <a href="/" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md transition">
                 Back to Dashboard
             </a>
         </header>
 
-        <div class="bg-gray-800 p-6 rounded-xl border border-gray-700 shadow-2xl overflow-hidden">
-            <div id="chart-container" class="w-full h-[600px]"></div>
+        <div class="bg-gray-800 p-4 rounded-xl border border-gray-700 shadow-2xl">
+            <div id="chart-container"></div>
 
-            <div class="mt-8 grid grid-cols-1 md:grid-cols-3 gap-6 text-sm text-gray-400">
-                <div class="flex flex-col space-y-2">
-                    <h3 class="font-bold text-gray-200 uppercase tracking-wider">Dimensions</h3>
-                    <p>• <strong class="text-gray-300">X-Axis:</strong> Time of Event</p>
-                    <p>• <strong class="text-gray-300">Y-Axis:</strong> Squeeze Timeframe</p>
-                    <p>• <strong class="text-gray-300">Bubble Size:</strong> Relative Volume (RVOL)</p>
-                    <p>• <strong class="text-gray-300">Color:</strong> Momentum Direction</p>
+            <div class="mt-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-xs text-gray-400">
+                <div class="bg-gray-900/50 p-3 rounded-lg">
+                    <h3 class="font-bold text-gray-300 mb-1 uppercase tracking-wider">Spatial Dimensions (3D)</h3>
+                    <p>• <strong>X:</strong> Time of Event</p>
+                    <p>• <strong>Y:</strong> Squeeze Timeframe (Short → Long)</p>
+                    <p>• <strong>Z:</strong> Relative Volume (RVOL)</p>
                 </div>
-                <div class="flex flex-col space-y-2">
-                    <h3 class="font-bold text-gray-200 uppercase tracking-wider">Momentum Color</h3>
-                    <div class="flex items-center space-x-2">
-                        <span class="w-4 h-4 bg-green-500 rounded-full"></span>
+                <div class="bg-gray-900/50 p-3 rounded-lg">
+                    <h3 class="font-bold text-gray-300 mb-1 uppercase tracking-wider">Data Mappings (4D/5D)</h3>
+                    <p>• <strong>Color:</strong> Momentum (Bullish/Bearish)</p>
+                    <p>• <strong>Size:</strong> Squeeze Count (Multi-TF Confluence)</p>
+                </div>
+                <div class="bg-gray-900/50 p-3 rounded-lg">
+                    <h3 class="font-bold text-gray-300 mb-1 uppercase tracking-wider">Color Legend</h3>
+                    <div class="flex items-center space-x-2 mt-1">
+                        <span class="w-3 h-3 bg-green-500 rounded-full"></span>
                         <span>Bullish Breakout</span>
                     </div>
                     <div class="flex items-center space-x-2">
-                        <span class="w-4 h-4 bg-red-500 rounded-full"></span>
+                        <span class="w-3 h-3 bg-red-500 rounded-full"></span>
                         <span>Bearish Breakout</span>
                     </div>
-                    <div class="flex items-center space-x-2">
-                        <span class="w-4 h-4 bg-gray-500 rounded-full"></span>
-                        <span>Neutral</span>
-                    </div>
                 </div>
-                <div class="flex flex-col space-y-2">
-                    <h3 class="font-bold text-gray-200 uppercase tracking-wider">Special Indicators</h3>
-                    <div class="flex items-center space-x-2">
-                        <span class="w-6 h-6 border-2 border-yellow-400 border-dashed rounded-full"></span>
-                        <span><strong>Confluence:</strong> Breakout supported by higher timeframe squeeze.</span>
-                    </div>
+                <div class="bg-gray-900/50 p-3 rounded-lg">
+                    <h3 class="font-bold text-gray-300 mb-1 uppercase tracking-wider">Controls</h3>
+                    <p>• <strong>Click & Drag:</strong> Rotate Plot</p>
+                    <p>• <strong>Scroll/Pinch:</strong> Zoom In/Out</p>
+                    <p>• <strong>Right Click & Drag:</strong> Pan</p>
                 </div>
             </div>
         </div>
     </div>
 
-    <div class="tooltip"></div>
-
     <script>
         const tfOrder = ['1m', '5m', '15m', '30m', '1H', '2H', '4H', 'Daily', 'Weekly', 'Monthly'];
-        const chartContainer = d3.select("#chart-container");
-        const tooltip = d3.select(".tooltip");
+        const chartDiv = document.getElementById('chart-container');
 
         async function initChart() {
             try {
@@ -76,155 +69,97 @@
                 const data = await response.json();
 
                 if (!data || data.length === 0) {
-                    chartContainer.html("<div class='h-full flex items-center justify-center text-gray-500 text-xl'>No fired events recorded today yet.</div>");
+                    chartDiv.innerHTML = "<div class='h-full flex items-center justify-center text-gray-500 text-xl'>No fired events recorded today yet.</div>";
                     return;
                 }
 
-                // Process data
-                data.forEach(d => {
-                    d.timestamp = new Date(d.fired_timestamp);
-                });
-
-                renderChart(data);
+                renderPlotly(data);
             } catch (error) {
                 console.error("Error fetching data:", error);
-                chartContainer.html("<div class='h-full flex items-center justify-center text-red-500'>Error loading data.</div>");
+                chartDiv.innerHTML = "<div class='h-full flex items-center justify-center text-red-500'>Error loading data.</div>";
             }
         }
 
-        function renderChart(data) {
-            chartContainer.html(""); // Clear
-            const containerNode = chartContainer.node();
-            const width = containerNode.clientWidth;
-            const height = containerNode.clientHeight;
-            const margin = { top: 40, right: 60, bottom: 60, left: 80 };
+        function renderPlotly(data) {
+            // Process data for Plotly
+            const x = data.map(d => new Date(d.fired_timestamp));
+            const y = data.map(d => d.fired_timeframe);
+            const z = data.map(d => d.rvol);
+            const tickers = data.map(d => d.ticker.replace('NSE:', ''));
+            const colors = data.map(d => d.momentum === 'Bullish' ? '#10b981' : d.momentum === 'Bearish' ? '#ef4444' : '#6b7280');
+            const sizes = data.map(d => (d.SqueezeCount || 1) * 10 + 5);
+            const confluence = data.map(d => d.confluence ? 'YES' : 'No');
 
-            const svg = chartContainer.append("svg")
-                .attr("width", width)
-                .attr("height", height)
-                .append("g")
-                .attr("transform", `translate(${margin.left},${margin.top})`);
+            const trace = {
+                x: x,
+                y: y,
+                z: z,
+                mode: 'markers+text',
+                type: 'scatter3d',
+                text: tickers,
+                textposition: 'top center',
+                marker: {
+                    size: sizes,
+                    color: colors,
+                    opacity: 0.8,
+                    line: {
+                        color: 'white',
+                        width: 0.5
+                    }
+                },
+                hovertemplate:
+                    '<b>%{text}</b><br>' +
+                    'Time: %{x}<br>' +
+                    'TF: %{y}<br>' +
+                    'RVOL: %{z:.2f}<br>' +
+                    '<extra></extra>'
+            };
 
-            // Scales
-            const xExtent = d3.extent(data, d => d.timestamp);
-            // Buffer X-axis
-            const xPadding = (xExtent[1] - xExtent[0]) * 0.05 || 3600000; // 1 hour buffer if only one point
-            const xScale = d3.scaleTime()
-                .domain([new Date(xExtent[0].getTime() - xPadding), new Date(xExtent[1].getTime() + xPadding)])
-                .range([0, width - margin.left - margin.right]);
+            const layout = {
+                paper_bgcolor: 'rgba(0,0,0,0)',
+                plot_bgcolor: 'rgba(0,0,0,0)',
+                font: { color: '#9ca3af' },
+                margin: { l: 0, r: 0, b: 0, t: 0 },
+                scene: {
+                    xaxis: { title: 'Time', gridcolor: '#374151', zerolinecolor: '#374151' },
+                    yaxis: {
+                        title: 'Timeframe',
+                        gridcolor: '#374151',
+                        zerolinecolor: '#374151',
+                        type: 'category',
+                        categoryorder: 'array',
+                        categoryarray: tfOrder
+                    },
+                    zaxis: { title: 'RVOL', gridcolor: '#374151', zerolinecolor: '#374151' },
+                    camera: {
+                        eye: { x: 1.5, y: 1.5, z: 1.5 }
+                    }
+                },
+                hovermode: 'closest'
+            };
 
-            const yScale = d3.scalePoint()
-                .domain(tfOrder)
-                .range([height - margin.top - margin.bottom, 0])
-                .padding(0.5);
+            const config = {
+                responsive: true,
+                displaylogo: false,
+                modeBarButtonsToRemove: ['lasso2d', 'select2d']
+            };
 
-            const rScale = d3.scaleSqrt()
-                .domain([0, d3.max(data, d => d.rvol) || 10])
-                .range([5, 30]);
+            Plotly.newPlot(chartDiv, [trace], layout, config);
 
-            const colorScale = d3.scaleOrdinal()
-                .domain(['Bullish', 'Bearish', 'Neutral'])
-                .range(['#10b981', '#ef4444', '#6b7280']);
+            chartDiv.on('plotly_click', function(data){
+                const pointIndex = data.points[0].pointNumber;
+                const url = data.points[0].fullData.text[pointIndex]; // This is ticker, need to find original URL
+                const originalEvent = window.lastData[pointIndex];
+                if (originalEvent && originalEvent.URL) {
+                    window.open(originalEvent.URL, '_blank');
+                }
+            });
 
-            // Axes
-            const xAxis = d3.axisBottom(xScale).ticks(8);
-            const yAxis = d3.axisLeft(yScale);
-
-            // Gridlines
-            svg.append("g")
-                .attr("class", "grid")
-                .attr("transform", `translate(0,${height - margin.top - margin.bottom})`)
-                .call(d3.axisBottom(xScale)
-                    .ticks(8)
-                    .tickSize(-(height - margin.top - margin.bottom))
-                    .tickFormat("")
-                );
-
-            svg.append("g")
-                .attr("class", "grid")
-                .call(d3.axisLeft(yScale)
-                    .tickSize(-(width - margin.left - margin.right))
-                    .tickFormat("")
-                );
-
-            svg.append("g")
-                .attr("transform", `translate(0,${height - margin.top - margin.bottom})`)
-                .call(xAxis)
-                .attr("class", "text-gray-400")
-                .append("text")
-                .attr("class", "axis-label")
-                .attr("x", (width - margin.left - margin.right) / 2)
-                .attr("y", 45)
-                .style("text-anchor", "middle")
-                .text("Time of Day");
-
-            svg.append("g")
-                .call(yAxis)
-                .attr("class", "text-gray-400")
-                .append("text")
-                .attr("class", "axis-label")
-                .attr("transform", "rotate(-90)")
-                .attr("x", -(height - margin.top - margin.bottom) / 2)
-                .attr("y", -60)
-                .style("text-anchor", "middle")
-                .text("Timeframe");
-
-            // Bubbles
-            const bubbles = svg.selectAll(".bubble")
-                .data(data)
-                .enter()
-                .append("circle")
-                .attr("class", d => `bubble ${d.confluence ? 'confluence' : ''}`)
-                .attr("cx", d => xScale(d.timestamp))
-                .attr("cy", d => yScale(d.fired_timeframe))
-                .attr("r", d => rScale(d.rvol))
-                .attr("fill", d => colorScale(d.momentum))
-                .attr("stroke", d => d.confluence ? "#fbbf24" : d3.rgb(colorScale(d.momentum)).darker())
-                .on("mouseover", function(event, d) {
-                    d3.select(this).raise();
-                    tooltip.transition().duration(200).style("opacity", .95);
-                    tooltip.html(`
-                        <div class="font-bold text-lg mb-1">${d.ticker.replace('NSE:', '')}</div>
-                        <div class="text-xs text-gray-400 mb-2">${d.fired_timestamp}</div>
-                        <div class="grid grid-cols-2 gap-x-4 gap-y-1 text-left">
-                            <span class="text-gray-400">Timeframe:</span> <span class="font-semibold text-blue-400">${d.fired_timeframe}</span>
-                            <span class="text-gray-400">Momentum:</span> <span class="font-semibold" style="color:${colorScale(d.momentum)}">${d.momentum}</span>
-                            <span class="text-gray-400">RVOL:</span> <span class="font-semibold">${d.rvol.toFixed(2)}</span>
-                            <span class="text-gray-400">Strength:</span> <span class="font-semibold">${d.squeeze_strength || 'N/A'}</span>
-                            <span class="text-gray-400">Confluence:</span> <span class="font-semibold ${d.confluence ? 'text-yellow-400' : ''}">${d.confluence ? 'YES' : 'No'}</span>
-                        </div>
-                    `)
-                    .style("left", (event.pageX + 15) + "px")
-                    .style("top", (event.pageY - 28) + "px");
-                })
-                .on("mousemove", (event) => {
-                    tooltip.style("left", (event.pageX + 15) + "px")
-                           .style("top", (event.pageY - 28) + "px");
-                })
-                .on("mouseout", () => {
-                    tooltip.transition().duration(500).style("opacity", 0);
-                })
-                .on("click", (event, d) => {
-                    if (d.URL) window.open(d.URL, "_blank");
-                });
-
-            // Ticker labels for larger bubbles
-            svg.selectAll(".ticker-label")
-                .data(data.filter(d => d.rvol > 3))
-                .enter()
-                .append("text")
-                .attr("class", "ticker-label pointer-events-none")
-                .attr("x", d => xScale(d.timestamp))
-                .attr("y", d => yScale(d.fired_timeframe) + 4)
-                .attr("text-anchor", "middle")
-                .style("font-size", "10px")
-                .style("font-weight", "bold")
-                .style("fill", "white")
-                .text(d => d.ticker.replace('NSE:', ''));
+            window.lastData = data;
         }
 
         window.addEventListener('resize', () => {
-            initChart();
+            if (window.lastData) Plotly.Plots.resize(chartDiv);
         });
 
         initChart();
