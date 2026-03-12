@@ -28,6 +28,19 @@
         <!-- Filter Bar -->
         <div class="bg-gray-800 p-3 rounded-lg mb-4 border border-gray-700 flex flex-wrap items-center gap-4">
             <div class="flex items-center space-x-2">
+                <label for="time-filter" class="text-xs text-gray-400 uppercase font-bold">Time Range:</label>
+                <select id="time-filter">
+                    <option value="0">All Time</option>
+                    <option value="5">Last 5m</option>
+                    <option value="10">Last 10m</option>
+                    <option value="15">Last 15m</option>
+                    <option value="30">Last 30m</option>
+                    <option value="60">Last 1h</option>
+                    <option value="120">Last 2h</option>
+                    <option value="240">Last 4h</option>
+                </select>
+            </div>
+            <div class="flex items-center space-x-2">
                 <label for="momentum-filter" class="text-xs text-gray-400 uppercase font-bold">Momentum:</label>
                 <select id="momentum-filter">
                     <option value="Any">Any</option>
@@ -85,8 +98,8 @@
                 </div>
                 <div class="bg-gray-900/50 p-3 rounded-lg">
                     <h3 class="font-bold text-gray-300 mb-1 uppercase tracking-wider">Controls</h3>
+                    <p>• <strong>Click Point:</strong> Open TV Chart</p>
                     <p>• <strong>Click & Drag:</strong> Rotate Plot</p>
-                    <p>• <strong>Scroll/Pinch:</strong> Zoom In/Out</p>
                 </div>
             </div>
         </div>
@@ -98,6 +111,7 @@
         const filterCount = document.getElementById('filter-count');
 
         window.allEvents = [];
+        window.filteredEvents = [];
 
         async function initData() {
             try {
@@ -111,25 +125,33 @@
         }
 
         function applyFilters() {
+            const timeRange = parseInt(document.getElementById('time-filter').value);
             const momentum = document.getElementById('momentum-filter').value;
             const minRvol = parseFloat(document.getElementById('rvol-filter').value);
             const minSqz = parseInt(document.getElementById('min-sqz-filter').value) || 1;
             const search = document.getElementById('ticker-search').value.toUpperCase();
 
-            const filteredData = window.allEvents.filter(d => {
+            const now = new Date();
+
+            window.filteredEvents = window.allEvents.filter(d => {
+                const eventTime = new Date(d.fired_timestamp);
+                const timeDiff = (now - eventTime) / 60000; // Minutes
+
+                const matchTime = timeRange === 0 || timeDiff <= timeRange;
                 const matchMomentum = momentum === 'Any' || d.momentum === momentum;
                 const matchRvol = d.rvol >= minRvol;
                 const matchSqz = (d.SqueezeCount || 1) >= minSqz;
                 const matchSearch = d.ticker.toUpperCase().includes(search);
-                return matchMomentum && matchRvol && matchSqz && matchSearch;
+
+                return matchTime && matchMomentum && matchRvol && matchSqz && matchSearch;
             });
 
-            filterCount.textContent = `Showing: ${filteredData.length} / ${window.allEvents.length}`;
+            filterCount.textContent = `Showing: ${window.filteredEvents.length} / ${window.allEvents.length}`;
 
-            if (filteredData.length === 0) {
+            if (window.filteredEvents.length === 0) {
                 chartDiv.innerHTML = "<div class='h-full flex items-center justify-center text-gray-500 text-xl'>No events match selected filters.</div>";
             } else {
-                renderPlotly(filteredData);
+                renderPlotly(window.filteredEvents);
             }
         }
 
@@ -174,16 +196,24 @@
 
             const config = { responsive: true, displaylogo: false };
             Plotly.newPlot(chartDiv, [trace], layout, config);
+
+            chartDiv.on('plotly_click', function(data){
+                const pointIndex = data.points[0].pointNumber;
+                const clickedEvent = window.filteredEvents[pointIndex];
+                if (clickedEvent && clickedEvent.URL) {
+                    window.open(clickedEvent.URL, '_blank');
+                }
+            });
         }
 
         // Event Listeners
-        ['momentum-filter', 'rvol-filter', 'min-sqz-filter', 'ticker-search'].forEach(id => {
+        ['time-filter', 'momentum-filter', 'rvol-filter', 'min-sqz-filter', 'ticker-search'].forEach(id => {
             const el = document.getElementById(id);
             el.addEventListener(el.tagName === 'SELECT' ? 'change' : 'input', applyFilters);
         });
 
         window.addEventListener('resize', () => {
-            if (window.allEvents.length > 0) Plotly.Plots.resize(chartDiv);
+            if (window.filteredEvents.length > 0) Plotly.Plots.resize(chartDiv);
         });
 
         initData();
