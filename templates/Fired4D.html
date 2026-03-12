@@ -8,7 +8,9 @@
     <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
     <style>
         body { font-family: sans-serif; background-color: #111827; color: white; }
-        #chart-container { width: 100%; height: 75vh; border-radius: 0.75rem; overflow: hidden; }
+        #chart-container { width: 100%; height: 70vh; border-radius: 0.75rem; overflow: hidden; }
+        input, select { background-color: #374151; border: 1px solid #4b5563; color: white; padding: 0.375rem 0.75rem; border-radius: 0.375rem; font-size: 0.875rem; }
+        input:focus, select:focus { outline: none; border-color: #3b82f6; ring: 1px solid #3b82f6; }
     </style>
 </head>
 <body class="bg-gray-900">
@@ -22,6 +24,38 @@
                 Back to Dashboard
             </a>
         </header>
+
+        <!-- Filter Bar -->
+        <div class="bg-gray-800 p-3 rounded-lg mb-4 border border-gray-700 flex flex-wrap items-center gap-4">
+            <div class="flex items-center space-x-2">
+                <label for="momentum-filter" class="text-xs text-gray-400 uppercase font-bold">Momentum:</label>
+                <select id="momentum-filter">
+                    <option value="Any">Any</option>
+                    <option value="Bullish">Bullish</option>
+                    <option value="Bearish">Bearish</option>
+                </select>
+            </div>
+            <div class="flex items-center space-x-2">
+                <label for="rvol-filter" class="text-xs text-gray-400 uppercase font-bold">RVOL:</label>
+                <select id="rvol-filter">
+                    <option value="0">Any</option>
+                    <option value="1">> 1</option>
+                    <option value="1.5">> 1.5</option>
+                    <option value="2">> 2</option>
+                </select>
+            </div>
+            <div class="flex items-center space-x-2">
+                <label for="min-sqz-filter" class="text-xs text-gray-400 uppercase font-bold">Min TFs:</label>
+                <input type="number" id="min-sqz-filter" value="1" min="1" max="10" class="w-16">
+            </div>
+            <div class="flex items-center space-x-2 flex-grow">
+                <label for="ticker-search" class="text-xs text-gray-400 uppercase font-bold">Search:</label>
+                <input type="text" id="ticker-search" placeholder="Ticker..." class="flex-grow">
+            </div>
+            <div id="filter-count" class="text-xs text-gray-500 font-medium">
+                Showing: 0 / 0
+            </div>
+        </div>
 
         <div class="bg-gray-800 p-4 rounded-xl border border-gray-700 shadow-2xl">
             <div id="chart-container"></div>
@@ -53,7 +87,6 @@
                     <h3 class="font-bold text-gray-300 mb-1 uppercase tracking-wider">Controls</h3>
                     <p>• <strong>Click & Drag:</strong> Rotate Plot</p>
                     <p>• <strong>Scroll/Pinch:</strong> Zoom In/Out</p>
-                    <p>• <strong>Right Click & Drag:</strong> Pan</p>
                 </div>
             </div>
         </div>
@@ -62,38 +95,54 @@
     <script>
         const tfOrder = ['1m', '5m', '15m', '30m', '1H', '2H', '4H', 'Daily', 'Weekly', 'Monthly'];
         const chartDiv = document.getElementById('chart-container');
+        const filterCount = document.getElementById('filter-count');
 
-        async function initChart() {
+        window.allEvents = [];
+
+        async function initData() {
             try {
                 const response = await fetch('/get_all_fired_events');
-                const data = await response.json();
-
-                if (!data || data.length === 0) {
-                    chartDiv.innerHTML = "<div class='h-full flex items-center justify-center text-gray-500 text-xl'>No fired events recorded today yet.</div>";
-                    return;
-                }
-
-                renderPlotly(data);
+                window.allEvents = await response.json();
+                applyFilters();
             } catch (error) {
                 console.error("Error fetching data:", error);
                 chartDiv.innerHTML = "<div class='h-full flex items-center justify-center text-red-500'>Error loading data.</div>";
             }
         }
 
+        function applyFilters() {
+            const momentum = document.getElementById('momentum-filter').value;
+            const minRvol = parseFloat(document.getElementById('rvol-filter').value);
+            const minSqz = parseInt(document.getElementById('min-sqz-filter').value) || 1;
+            const search = document.getElementById('ticker-search').value.toUpperCase();
+
+            const filteredData = window.allEvents.filter(d => {
+                const matchMomentum = momentum === 'Any' || d.momentum === momentum;
+                const matchRvol = d.rvol >= minRvol;
+                const matchSqz = (d.SqueezeCount || 1) >= minSqz;
+                const matchSearch = d.ticker.toUpperCase().includes(search);
+                return matchMomentum && matchRvol && matchSqz && matchSearch;
+            });
+
+            filterCount.textContent = `Showing: ${filteredData.length} / ${window.allEvents.length}`;
+
+            if (filteredData.length === 0) {
+                chartDiv.innerHTML = "<div class='h-full flex items-center justify-center text-gray-500 text-xl'>No events match selected filters.</div>";
+            } else {
+                renderPlotly(filteredData);
+            }
+        }
+
         function renderPlotly(data) {
-            // Process data for Plotly
             const x = data.map(d => new Date(d.fired_timestamp));
             const y = data.map(d => d.fired_timeframe);
             const z = data.map(d => d.rvol);
             const tickers = data.map(d => d.ticker.replace('NSE:', ''));
             const colors = data.map(d => d.momentum === 'Bullish' ? '#10b981' : d.momentum === 'Bearish' ? '#ef4444' : '#6b7280');
             const sizes = data.map(d => (d.SqueezeCount || 1) * 10 + 5);
-            const confluence = data.map(d => d.confluence ? 'YES' : 'No');
 
             const trace = {
-                x: x,
-                y: y,
-                z: z,
+                x: x, y: y, z: z,
                 mode: 'markers+text',
                 type: 'scatter3d',
                 text: tickers,
@@ -102,17 +151,9 @@
                     size: sizes,
                     color: colors,
                     opacity: 0.8,
-                    line: {
-                        color: 'white',
-                        width: 0.5
-                    }
+                    line: { color: 'white', width: 0.5 }
                 },
-                hovertemplate:
-                    '<b>%{text}</b><br>' +
-                    'Time: %{x}<br>' +
-                    'TF: %{y}<br>' +
-                    'RVOL: %{z:.2f}<br>' +
-                    '<extra></extra>'
+                hovertemplate: '<b>%{text}</b><br>Time: %{x}<br>TF: %{y}<br>RVOL: %{z:.2f}<br><extra></extra>'
             };
 
             const layout = {
@@ -123,46 +164,29 @@
                 scene: {
                     xaxis: { title: 'Time', gridcolor: '#374151', zerolinecolor: '#374151' },
                     yaxis: {
-                        title: 'Timeframe',
-                        gridcolor: '#374151',
-                        zerolinecolor: '#374151',
-                        type: 'category',
-                        categoryorder: 'array',
-                        categoryarray: tfOrder
+                        title: 'Timeframe', gridcolor: '#374151', zerolinecolor: '#374151',
+                        type: 'category', categoryorder: 'array', categoryarray: tfOrder
                     },
                     zaxis: { title: 'RVOL', gridcolor: '#374151', zerolinecolor: '#374151' },
-                    camera: {
-                        eye: { x: 1.5, y: 1.5, z: 1.5 }
-                    }
-                },
-                hovermode: 'closest'
-            };
-
-            const config = {
-                responsive: true,
-                displaylogo: false,
-                modeBarButtonsToRemove: ['lasso2d', 'select2d']
-            };
-
-            Plotly.newPlot(chartDiv, [trace], layout, config);
-
-            chartDiv.on('plotly_click', function(data){
-                const pointIndex = data.points[0].pointNumber;
-                const url = data.points[0].fullData.text[pointIndex]; // This is ticker, need to find original URL
-                const originalEvent = window.lastData[pointIndex];
-                if (originalEvent && originalEvent.URL) {
-                    window.open(originalEvent.URL, '_blank');
+                    camera: { eye: { x: 1.5, y: 1.5, z: 1.5 } }
                 }
-            });
+            };
 
-            window.lastData = data;
+            const config = { responsive: true, displaylogo: false };
+            Plotly.newPlot(chartDiv, [trace], layout, config);
         }
 
-        window.addEventListener('resize', () => {
-            if (window.lastData) Plotly.Plots.resize(chartDiv);
+        // Event Listeners
+        ['momentum-filter', 'rvol-filter', 'min-sqz-filter', 'ticker-search'].forEach(id => {
+            const el = document.getElementById(id);
+            el.addEventListener(el.tagName === 'SELECT' ? 'change' : 'input', applyFilters);
         });
 
-        initChart();
+        window.addEventListener('resize', () => {
+            if (window.allEvents.length > 0) Plotly.Plots.resize(chartDiv);
+        });
+
+        initData();
     </script>
 </body>
 </html>
