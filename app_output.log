@@ -49,3 +49,45 @@ Skipping scan because cookies are not loaded.
  * Restarting with stat
  * Debugger is active!
  * Debugger PIN: 631-326-424
+ * Detected change in '/app/app.py', reloading
+Warning: Could not load TradingView cookies. Scanning will be disabled. Error: can't find cookies file
+
+Location:
+    rookie-rs/src/common/paths.rs:48:7
+Auto-scanning...
+Skipping scan because cookies are not loaded.
+Auto-scanning...
+Skipping scan because cookies are not loaded.
+Auto-scanning...
+Skipping scan because cookies are not loaded.
+Auto-scanning...
+Skipping scan because cookies are not loaded.
+Auto-scanning...
+Skipping scan because cookies are not loaded.
+Auto-scanning...
+Skipping scan because cookies are not loaded.
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 631-326-424
+ * Detected change in '/app/app.py', reloading
+Warning: Could not load TradingView cookies. Scanning will be disabled. Error: can't find cookies file
+
+Location:
+    rookie-rs/src/common/paths.rs:48:7
+Auto-scanning...
+Skipping scan because cookies are not loaded.
+Auto-scanning...
+Skipping scan because cookies are not loaded.
+Auto-scanning...
+Skipping scan because cookies are not loaded.
+Auto-scanning...
+Skipping scan because cookies are not loaded.
+Auto-scanning...
+Skipping scan because cookies are not loaded.
+Auto-scanning...
+Skipping scan because cookies are not loaded.
+Auto-scanning...
+Skipping scan because cookies are not loaded.
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 631-326-424
