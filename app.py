@@ -101,8 +101,8 @@ def generate_heatmap_data(df):
     numeric_cols = df_clean.select_dtypes(include=[np.number]).columns
     df_clean[numeric_cols] = df_clean[numeric_cols].fillna(0)
 
-    # Other object columns
-    object_cols = df_clean.select_dtypes(include=['object']).columns
+    # Other non-numeric columns
+    object_cols = df_clean.columns.difference(numeric_cols)
     df_clean[object_cols] = df_clean[object_cols].fillna('N/A')
 
     for _, row in df_clean.iterrows():
@@ -295,7 +295,7 @@ def load_recent_fired_events_from_db():
         # Handle NaNs for consistency
         numeric_cols = df.select_dtypes(include=[np.number]).columns
         df[numeric_cols] = df[numeric_cols].fillna(0)
-        object_cols = df.select_dtypes(include=['object']).columns
+        object_cols = df.columns.difference(numeric_cols)
         df[object_cols] = df[object_cols].fillna('N/A')
     return df
 
@@ -313,7 +313,7 @@ def load_all_day_fired_events_from_db():
     # Handle NaNs for JSON serialization
     numeric_cols = df.select_dtypes(include=[np.number]).columns
     df[numeric_cols] = df[numeric_cols].fillna(0)
-    object_cols = df.select_dtypes(include=['object']).columns
+    object_cols = df.columns.difference(numeric_cols)
     df[object_cols] = df[object_cols].fillna('N/A')
 
     # Convert timestamp to ISO format string for JSON serialization
