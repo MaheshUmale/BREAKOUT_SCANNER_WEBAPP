@@ -90,11 +90,15 @@ def generate_heatmap_data(df):
 
     heatmap_data = []
     for _, row in df.iterrows():
+        # Handle NaN values for JSON serialization
+        def clean_val(val, default=0):
+            return default if pd.isna(val) or (isinstance(val, float) and np.isnan(val)) else val
+
         stock_data = {
-            "name": row['ticker'], "value": row['HeatmapScore'], "count": row.get('SqueezeCount', 0),
-            "rvol": row['rvol'], "url": row['URL'], "logo": row['logo'], "momentum": row['momentum'],
+            "name": row['ticker'], "value": clean_val(row['HeatmapScore']), "count": clean_val(row.get('SqueezeCount', 0)),
+            "rvol": clean_val(row['rvol']), "url": row['URL'], "logo": row['logo'], "momentum": row['momentum'],
             "highest_tf": row['highest_tf'], "squeeze_strength": row['squeeze_strength'],
-            "sector": row['sector'], "industry": row['industry'], "change": row['change']
+            "sector": row['sector'], "industry": row['industry'], "change": clean_val(row['change'])
         }
         if 'fired_timeframe' in df.columns: stock_data['fired_timeframe'] = row['fired_timeframe']
         if 'fired_timestamp' in df.columns and pd.notna(row['fired_timestamp']):
@@ -447,7 +451,10 @@ def run_scan(settings):
         sector_summary = []
         if df_all is not None and not df_all.empty:
             df_all['sector'] = df_all['sector'].fillna('Unknown')
-            sector_summary = df_all.groupby('sector', as_index=False)['change'].mean().rename(columns={'change': 'avg_change'}).to_dict('records')
+            # Calculate mean, then fill NaN with 0 before converting to dict
+            df_sector = df_all.groupby('sector', as_index=False)['change'].mean().rename(columns={'change': 'avg_change'})
+            df_sector['avg_change'] = df_sector['avg_change'].fillna(0)
+            sector_summary = df_sector.to_dict('records')
 
         with data_lock:
             global latest_sector_summary
