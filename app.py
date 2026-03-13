@@ -20,6 +20,7 @@ latest_scan_dfs = {
     "formed": pd.DataFrame(),
     "fired": pd.DataFrame()
 }
+latest_sector_summary = []
 data_lock = threading.Lock()
 
 # --- Global state for scanner settings ---
@@ -79,11 +80,12 @@ def generate_heatmap_data(df):
     Generates a simple, flat list of dictionaries from the dataframe for the D3 heatmap.
     This replaces the JSON file generation.
     """
-    base_required_cols = ['ticker', 'HeatmapScore', 'SqueezeCount', 'rvol', 'URL', 'logo', 'momentum', 'highest_tf', 'squeeze_strength']
+    base_required_cols = ['ticker', 'HeatmapScore', 'SqueezeCount', 'rvol', 'URL', 'logo', 'momentum', 'highest_tf', 'squeeze_strength', 'sector', 'industry', 'change']
     for c in base_required_cols:
         if c not in df.columns:
             if c == 'momentum': df[c] = 'Neutral'
             elif c in ['highest_tf', 'squeeze_strength']: df[c] = 'N/A'
+            elif c in ['sector', 'industry']: df[c] = 'Unknown'
             else: df[c] = 0
 
     heatmap_data = []
@@ -91,7 +93,8 @@ def generate_heatmap_data(df):
         stock_data = {
             "name": row['ticker'], "value": row['HeatmapScore'], "count": row.get('SqueezeCount', 0),
             "rvol": row['rvol'], "url": row['URL'], "logo": row['logo'], "momentum": row['momentum'],
-            "highest_tf": row['highest_tf'], "squeeze_strength": row['squeeze_strength']
+            "highest_tf": row['highest_tf'], "squeeze_strength": row['squeeze_strength'],
+            "sector": row['sector'], "industry": row['industry'], "change": row['change']
         }
         if 'fired_timeframe' in df.columns: stock_data['fired_timeframe'] = row['fired_timeframe']
         if 'fired_timestamp' in df.columns and pd.notna(row['fired_timestamp']):
@@ -111,7 +114,7 @@ tf_display_map = { '|1': '1m', '|5': '5m', '|15': '15m', '|30': '30m', '|60': '1
 tf_suffix_map = {v: k for k, v in tf_display_map.items()}
 
 # Construct select columns for all timeframes
-select_cols = ['name', 'logoid', 'close', 'MACD.hist']
+select_cols = ['name', 'logoid', 'close', 'MACD.hist', 'sector', 'industry', 'change']
 for tf in timeframes:
     select_cols.extend([
         f'KltChnl.lower{tf}', f'KltChnl.upper{tf}', f'BB.lower{tf}', f'BB.upper{tf}',
@@ -176,10 +179,24 @@ def get_fired_breakout_direction(row, fired_tf_name, tf_suffix_map):
 def init_db():
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
-    cursor.execute('''CREATE TABLE IF NOT EXISTS squeeze_history (id INTEGER PRIMARY KEY AUTOINCREMENT, scan_timestamp TIMESTAMP NOT NULL, ticker TEXT NOT NULL, timeframe TEXT NOT NULL, volatility REAL, rvol REAL, SqueezeCount INTEGER, squeeze_strength TEXT, HeatmapScore REAL)''')
-    cursor.execute('''CREATE TABLE IF NOT EXISTS fired_squeeze_events (id INTEGER PRIMARY KEY AUTOINCREMENT, fired_timestamp TIMESTAMP NOT NULL, ticker TEXT NOT NULL, fired_timeframe TEXT NOT NULL, momentum TEXT, previous_volatility REAL, current_volatility REAL, rvol REAL, HeatmapScore REAL, URL TEXT, logo TEXT, SqueezeCount INTEGER, highest_tf TEXT)''')
+    cursor.execute('''CREATE TABLE IF NOT EXISTS squeeze_history (id INTEGER PRIMARY KEY AUTOINCREMENT, scan_timestamp TIMESTAMP NOT NULL, ticker TEXT NOT NULL, timeframe TEXT NOT NULL, volatility REAL, rvol REAL, SqueezeCount INTEGER, squeeze_strength TEXT, HeatmapScore REAL, sector TEXT, industry TEXT, change REAL)''')
+    cursor.execute('''CREATE TABLE IF NOT EXISTS fired_squeeze_events (id INTEGER PRIMARY KEY AUTOINCREMENT, fired_timestamp TIMESTAMP NOT NULL, ticker TEXT NOT NULL, fired_timeframe TEXT NOT NULL, momentum TEXT, previous_volatility REAL, current_volatility REAL, rvol REAL, HeatmapScore REAL, URL TEXT, logo TEXT, SqueezeCount INTEGER, highest_tf TEXT, sector TEXT, industry TEXT, change REAL)''')
 
-    # --- Schema migration: Add 'confluence' column if it doesn't exist ---
+    # --- Schema migration ---
+    tables = ['squeeze_history', 'fired_squeeze_events']
+    for table in tables:
+        cursor.execute(f"PRAGMA table_info({table})")
+        columns = [info[1] for info in cursor.fetchall()]
+        if 'sector' not in columns:
+            print(f"Adding 'sector' column to '{table}' table.")
+            cursor.execute(f"ALTER TABLE {table} ADD COLUMN sector TEXT")
+        if 'industry' not in columns:
+            print(f"Adding 'industry' column to '{table}' table.")
+            cursor.execute(f"ALTER TABLE {table} ADD COLUMN industry TEXT")
+        if 'change' not in columns:
+            print(f"Adding 'change' column to '{table}' table.")
+            cursor.execute(f"ALTER TABLE {table} ADD COLUMN change REAL")
+
     cursor.execute("PRAGMA table_info(fired_squeeze_events)")
     columns = [info[1] for info in cursor.fetchall()]
     if 'confluence' not in columns:
@@ -207,8 +224,8 @@ def save_current_squeeze_list_to_db(squeeze_records):
     conn = sqlite3.connect(DB_FILE, detect_types=sqlite3.PARSE_DECLTYPES)
     cursor = conn.cursor()
     now = datetime.now()
-    data_to_insert = [(now, r['ticker'], r['timeframe'], r['volatility'], r.get('rvol'), r.get('SqueezeCount'), r.get('squeeze_strength'), r.get('HeatmapScore')) for r in squeeze_records]
-    cursor.executemany('INSERT INTO squeeze_history (scan_timestamp, ticker, timeframe, volatility, rvol, SqueezeCount, squeeze_strength, HeatmapScore) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', data_to_insert)
+    data_to_insert = [(now, r['ticker'], r['timeframe'], r['volatility'], r.get('rvol'), r.get('SqueezeCount'), r.get('squeeze_strength'), r.get('HeatmapScore'), r.get('sector'), r.get('industry'), r.get('change')) for r in squeeze_records]
+    cursor.executemany('INSERT INTO squeeze_history (scan_timestamp, ticker, timeframe, volatility, rvol, SqueezeCount, squeeze_strength, HeatmapScore, sector, industry, change) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', data_to_insert)
     conn.commit()
     conn.close()
 
@@ -225,7 +242,7 @@ def save_fired_events_to_db(fired_events_df):
          row.get('previous_volatility'), row.get('current_volatility'),
          row.get('rvol'), row.get('HeatmapScore'), row.get('URL'),
          row.get('logo'), row.get('SqueezeCount'), row.get('highest_tf'),
-         bool(row.get('confluence', False)))  # Ensure boolean conversion
+         bool(row.get('confluence', False)), row.get('sector'), row.get('industry'), row.get('change'))  # Ensure boolean conversion
         for _, row in fired_events_df.iterrows()
     ]
     cursor = conn.cursor()
@@ -233,8 +250,8 @@ def save_fired_events_to_db(fired_events_df):
         INSERT INTO fired_squeeze_events (
             fired_timestamp, ticker, fired_timeframe, momentum,
             previous_volatility, current_volatility, rvol, HeatmapScore,
-            URL, logo, SqueezeCount, highest_tf, confluence
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            URL, logo, SqueezeCount, highest_tf, confluence, sector, industry, change
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     '''
     cursor.executemany(sql, data_to_insert)
     conn.commit()
@@ -419,7 +436,24 @@ def run_scan(settings):
         # 5. Save current state
         save_current_squeeze_list_to_db(current_squeeze_records)
 
-        # 6. Return processed dataframes
+        # 6. Fetch Sector Summary
+        sector_query = Query().select('sector', 'change').where(
+            col('exchange') == settings['exchange'],
+            col('active_symbol') == True,
+            col('type') == 'stock'
+        ).set_markets(settings['market']).limit(10000)
+        _, df_all = sector_query.get_scanner_data(cookies=cookies)
+
+        sector_summary = []
+        if df_all is not None and not df_all.empty:
+            df_all['sector'] = df_all['sector'].fillna('Unknown')
+            sector_summary = df_all.groupby('sector', as_index=False)['change'].mean().rename(columns={'change': 'avg_change'}).to_dict('records')
+
+        with data_lock:
+            global latest_sector_summary
+            latest_sector_summary = sector_summary
+
+        # 7. Return processed dataframes
         return {
             "in_squeeze": df_in_squeeze_processed,
             "formed": df_formed_processed,
@@ -467,6 +501,46 @@ def formed_page():
 @app.route('/compact')
 def compact_page():
     return render_template('CompactHeatmap.html')
+
+@app.route('/sectoral')
+def sectoral_page():
+    return render_template('SectoralHeatmap.html')
+
+@app.route('/get_sector_summary', methods=['GET'])
+def get_sector_summary():
+    """Returns the aggregated sector performance and stocks grouped by sector."""
+    with data_lock:
+        dfs = {
+            "in_squeeze": latest_scan_dfs["in_squeeze"].copy(),
+            "fired": latest_scan_dfs["fired"].copy()
+        }
+        sectors = list(latest_sector_summary)
+
+    # Convert stock data to heatmap format
+    in_squeeze_data = generate_heatmap_data(dfs["in_squeeze"])
+    fired_data = generate_heatmap_data(dfs["fired"])
+
+    # Combine all relevant stocks
+    all_stocks = in_squeeze_data + fired_data
+    # Remove duplicates (if any stock is in both lists, prioritize fired)
+    seen_tickers = set()
+    unique_stocks = []
+    # Process fired first
+    for stock in fired_data:
+        if stock['name'] not in seen_tickers:
+            stock['status'] = 'fired'
+            unique_stocks.append(stock)
+            seen_tickers.add(stock['name'])
+    for stock in in_squeeze_data:
+        if stock['name'] not in seen_tickers:
+            stock['status'] = 'in_squeeze'
+            unique_stocks.append(stock)
+            seen_tickers.add(stock['name'])
+
+    return jsonify({
+        "sectors": sectors,
+        "stocks": unique_stocks
+    })
 
 @app.route('/scan', methods=['POST'])
 def scan_endpoint():
