@@ -89,23 +89,38 @@ def generate_heatmap_data(df):
             else: df[c] = 0
 
     heatmap_data = []
-    for _, row in df.iterrows():
-        # Handle NaN values for JSON serialization
-        def clean_val(val, default=0):
-            return default if pd.isna(val) or (isinstance(val, float) and np.isnan(val)) else val
+    # Pre-fill NaNs in the DataFrame for consistency
+    df_clean = df.copy()
 
+    # Ensure specific columns are treated as objects if they might contain NaNs and strings
+    string_cols = ['sector', 'industry', 'momentum', 'highest_tf', 'squeeze_strength', 'fired_timeframe']
+    for col in string_cols:
+        if col in df_clean.columns:
+            df_clean[col] = df_clean[col].fillna('N/A').astype(str)
+
+    numeric_cols = df_clean.select_dtypes(include=[np.number]).columns
+    df_clean[numeric_cols] = df_clean[numeric_cols].fillna(0)
+
+    # Other object columns
+    object_cols = df_clean.select_dtypes(include=['object']).columns
+    df_clean[object_cols] = df_clean[object_cols].fillna('N/A')
+
+    for _, row in df_clean.iterrows():
         stock_data = {
-            "name": row['ticker'], "value": clean_val(row['HeatmapScore']), "count": clean_val(row.get('SqueezeCount', 0)),
-            "rvol": clean_val(row['rvol']), "url": row['URL'], "logo": row['logo'], "momentum": row['momentum'],
+            "name": row['ticker'], "value": row['HeatmapScore'], "count": row.get('SqueezeCount', 0),
+            "rvol": row['rvol'], "url": row['URL'], "logo": row['logo'], "momentum": row['momentum'],
             "highest_tf": row['highest_tf'], "squeeze_strength": row['squeeze_strength'],
-            "sector": row['sector'], "industry": row['industry'], "change": clean_val(row['change'])
+            "sector": row['sector'], "industry": row['industry'], "change": row['change']
         }
-        if 'fired_timeframe' in df.columns: stock_data['fired_timeframe'] = row['fired_timeframe']
-        if 'fired_timestamp' in df.columns and pd.notna(row['fired_timestamp']):
-            stock_data['fired_timestamp'] = row['fired_timestamp'].isoformat()
-        if 'previous_volatility' in df.columns: stock_data['previous_volatility'] = row['previous_volatility']
-        if 'current_volatility' in df.columns: stock_data['current_volatility'] = row['current_volatility']
-        if 'volatility_increased' in df.columns: stock_data['volatility_increased'] = row['volatility_increased']
+        if 'fired_timeframe' in df_clean.columns: stock_data['fired_timeframe'] = row['fired_timeframe']
+        if 'fired_timestamp' in df_clean.columns and pd.notna(row['fired_timestamp']):
+            if isinstance(row['fired_timestamp'], datetime):
+                stock_data['fired_timestamp'] = row['fired_timestamp'].isoformat()
+            else:
+                stock_data['fired_timestamp'] = str(row['fired_timestamp'])
+        if 'previous_volatility' in df_clean.columns: stock_data['previous_volatility'] = row['previous_volatility']
+        if 'current_volatility' in df_clean.columns: stock_data['current_volatility'] = row['current_volatility']
+        if 'volatility_increased' in df_clean.columns: stock_data['volatility_increased'] = row['volatility_increased']
         heatmap_data.append(stock_data)
     return heatmap_data
 
@@ -275,6 +290,13 @@ def load_recent_fired_events_from_db():
     query = "SELECT * FROM fired_squeeze_events WHERE fired_timestamp >= ?"
     df = pd.read_sql_query(query, conn, params=(fifteen_minutes_ago,))
     conn.close()
+
+    if not df.empty:
+        # Handle NaNs for consistency
+        numeric_cols = df.select_dtypes(include=[np.number]).columns
+        df[numeric_cols] = df[numeric_cols].fillna(0)
+        object_cols = df.select_dtypes(include=['object']).columns
+        df[object_cols] = df[object_cols].fillna('N/A')
     return df
 
 def load_all_day_fired_events_from_db():
@@ -284,14 +306,20 @@ def load_all_day_fired_events_from_db():
     query = "SELECT * FROM fired_squeeze_events WHERE fired_timestamp >= ? ORDER BY fired_timestamp DESC"
     df = pd.read_sql_query(query, conn, params=(today_start,))
     conn.close()
-    # Convert timestamp to ISO format string for JSON serialization
-    if not df.empty and 'fired_timestamp' in df.columns:
-   #     df['fired_timestamp'] = pd.to_datetime(df['fired_timestamp']).dt.isoformat()
-        # First, convert the column to datetime objects
-        df['fired_timestamp'] = pd.to_datetime(df['fired_timestamp'])
 
-        # Then, apply the isoformat() method to each element
-        df['fired_timestamp'] = df['fired_timestamp'].apply(lambda x: x.isoformat())
+    if df.empty:
+        return df
+
+    # Handle NaNs for JSON serialization
+    numeric_cols = df.select_dtypes(include=[np.number]).columns
+    df[numeric_cols] = df[numeric_cols].fillna(0)
+    object_cols = df.select_dtypes(include=['object']).columns
+    df[object_cols] = df[object_cols].fillna('N/A')
+
+    # Convert timestamp to ISO format string for JSON serialization
+    if 'fired_timestamp' in df.columns:
+        df['fired_timestamp'] = pd.to_datetime(df['fired_timestamp'])
+        df['fired_timestamp'] = df['fired_timestamp'].apply(lambda x: x.isoformat() if pd.notna(x) else '')
     return df
 
 # --- Main Scanning Logic ---
